@@ -23,7 +23,7 @@ namespace TraceNet.Controllers
         /// 📡 특정 장비에서 서버까지의 경로 추적
         /// </summary>
         /// <param name="deviceId">출발 장비의 ID</param>
-        /// <returns>TraceDto 경로 리스트</returns>
+        /// <returns>TraceResultDto (경로 + 케이블)</returns>
         [HttpGet("{deviceId}")]
         public async Task<ActionResult<TraceResultDto>> TraceFrom(int deviceId)
         {
@@ -31,10 +31,11 @@ namespace TraceNet.Controllers
             {
                 var result = await _traceService.TracePathAsync(deviceId);
 
-                // Path는 존재하지만 비어 있는 경우 (이론상 없음 - 방어적으로 처리 가능)
+                // Path는 존재하지만 비어 있는 경우 (이론상 없음 - 방어적으로 처리)
                 if (result.Path.Count == 0)
                     return NotFound(new { message = "경로를 찾을 수 없습니다." });
 
+                // ✅ 케이블도 포함된 TraceResultDto 전체 반환
                 return Ok(result);
             }
             catch (KeyNotFoundException ex)
@@ -53,6 +54,5 @@ namespace TraceNet.Controllers
                 throw new ApplicationException("경로 추적 중 오류가 발생했습니다.", ex);
             }
         }
-
     }
 }

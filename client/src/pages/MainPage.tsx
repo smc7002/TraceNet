@@ -3,6 +3,8 @@ import { fetchDevices } from "../api/deviceApi";
 import { fetchTrace } from "../api/traceApi";
 import type { Device } from "../types/device";
 import type { TraceResponse } from "../api/traceApi";
+import type { TraceResponse } from "../types/trace";
+
 
 import ControlBar from "../components/ControlBar";
 import NetworkDiagram from "../components/NetworkDiagram";

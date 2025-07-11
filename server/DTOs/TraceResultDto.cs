@@ -6,5 +6,6 @@ namespace TraceNet.DTOs
         public string? EndDeviceName { get; set; }
         public bool Success { get; set; }
         public List<TraceDto> Path { get; set; } = new();
+        public List<CableEdgeDto>? Cables { get; set; }
     }
 }

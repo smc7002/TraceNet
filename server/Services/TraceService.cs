@@ -13,10 +13,12 @@ namespace TraceNet.Services
     public class TraceService
     {
         private readonly TraceNetDbContext _context;
+        private readonly ILogger<TraceService> _logger;
 
-        public TraceService(TraceNetDbContext context)
+        public TraceService(TraceNetDbContext context, ILogger<TraceService> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
         /// <summary>
@@ -25,83 +27,93 @@ namespace TraceNet.Services
         /// </summary>
         public async Task<TraceResultDto> TracePathAsync(int startDeviceId, int maxDepth = 20)
         {
-            // ✅ 1. 캐시와 방문 기록 초기화
             var deviceCache = new Dictionary<int, Device>();
             var visited = new HashSet<int>();
             var path = new List<TraceDto>();
+            var cables = new List<CableEdgeDto>();
 
-            // ✅ 2. 시작 장비 로딩 (Connection, Cable, ToPort, ToDevice 포함)
             var startDevice = await LoadDeviceWithConnectionsAsync(startDeviceId);
             if (startDevice == null)
                 throw new KeyNotFoundException($"시작 장비(DeviceId={startDeviceId})를 찾을 수 없습니다.");
 
             deviceCache[startDeviceId] = startDevice;
 
-            // ✅ 3. DFS 경로 탐색
-            bool found = await DFS(startDeviceId, deviceCache, visited, path, 0, maxDepth);
+            bool found = await DFS(startDeviceId, deviceCache, visited, path, cables, 0, maxDepth);
 
             if (!found)
                 throw new InvalidOperationException("서버까지의 경로를 찾을 수 없습니다.");
 
-            // ✅ 4. 탐색 결과 반환
             return new TraceResultDto
             {
                 StartDeviceName = startDevice.Name,
                 EndDeviceName = path.LastOrDefault()?.ToDevice,
                 Success = true,
-                Path = path
+                Path = path,
+                Cables = cables
             };
         }
+
 
         /// <summary>
         /// DFS 알고리즘을 통해 재귀적으로 연결 경로를 탐색합니다.
         /// 장비는 탐색 중 on-demand로 불러오며, 순환 및 최대 깊이를 고려합니다.
         /// </summary>
+        private const string ServerDeviceType = "Server";
+        private static readonly StringComparison IgnoreCase = StringComparison.OrdinalIgnoreCase;
+
         private async Task<bool> DFS(
-            int currentDeviceId,
-            Dictionary<int, Device> deviceCache,
-            HashSet<int> visited,
-            List<TraceDto> path,
-            int depth,
-            int maxDepth)
+   int currentDeviceId,
+   Dictionary<int, Device> deviceCache,
+   HashSet<int> visited,
+   List<TraceDto> path,
+   List<CableEdgeDto> cables,
+   int depth,
+   int maxDepth)
         {
-            // ✅ 깊이 초과 또는 중복 방문 방지
-            if (depth > maxDepth || visited.Contains(currentDeviceId))
+            // 순환 참조 방지 및 탐색 깊이 제한으로 무한 루프 방지
+            if (visited.Contains(currentDeviceId) || depth > maxDepth)
                 return false;
 
+            // 현재 노드를 방문 표시 (백트래킹을 위해 나중에 제거됨)
             visited.Add(currentDeviceId);
 
-            // ✅ 현재 장비 가져오기 (캐시 → DB 순)
+            // 디바이스 정보를 캐시에서 조회하거나 DB에서 로드
             if (!deviceCache.TryGetValue(currentDeviceId, out var device))
             {
-                device = await LoadDeviceWithConnectionsAsync(currentDeviceId);
+                try
+                {
+                    // 비동기 DB 조회: 포트 및 연결 정보 포함
+                    device = await LoadDeviceWithConnectionsAsync(currentDeviceId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[TraceService] Device 로딩 실패 (DeviceId={DeviceId})", currentDeviceId);
+                    return false;
+                }
+
                 if (device == null)
                     return false;
 
+                // 성능 향상을 위해 로드된 디바이스를 캐시에 저장
                 deviceCache[currentDeviceId] = device;
             }
 
-            // ✅ 도착 조건: Server 타입 장비 도달
-            if (device.Type.Equals("Server", StringComparison.OrdinalIgnoreCase))
+            // 목표 조건: 서버 타입 디바이스 발견 시 탐색 성공
+            if (device.Type.Equals(ServerDeviceType, IgnoreCase))
                 return true;
 
-            // ✅ 각 포트를 통해 연결된 다음 장비로 재귀 탐색
+            // 현재 디바이스의 모든 포트를 탐색하여 연결된 다음 디바이스로 이동
             foreach (var port in device.Ports)
             {
-                var conn = port.Connection;
-                var cable = conn?.Cable;
-                var nextPort = conn?.ToPort;
-                var nextDevice = nextPort?.Device;
-
-                // ❌ 연결이 불완전한 경우 스킵
-                if (conn == null || cable == null || nextPort == null || nextDevice == null)
+                // 연결 유효성 검사: 케이블, 포트, 디바이스가 모두 존재하는지 확인
+                if (!IsValidConnection(port, out var nextDevice, out var cable, out var nextPort))
                     continue;
 
-                // 🔒 자기 자신으로의 루프 방지
+                // 자기 자신으로의 연결 제외 (루프백 방지)
                 if (nextDevice.DeviceId == currentDeviceId)
                     continue;
 
-                // 🔄 경로에 현재 hop 추가
+                // 경로 추적을 위한 연결 정보 기록 (UI 표시용)
                 path.Add(new TraceDto
                 {
                     CableId = cable.CableId,
@@ -113,16 +125,48 @@ namespace TraceNet.Services
                     ToPort = nextPort.Name
                 });
 
-                // ✅ 다음 장비로 재귀 호출
-                if (await DFS(nextDevice.DeviceId, deviceCache, visited, path, depth + 1, maxDepth))
+                // 네트워크 시각화를 위한 간선(Edge) 정보 기록
+                cables.Add(new CableEdgeDto
+                {
+                    CableId = cable.CableId,
+                    FromPortId = port.PortId,
+                    FromDeviceId = device.DeviceId,
+                    ToPortId = nextPort.PortId,
+                    ToDeviceId = nextDevice.DeviceId
+                });
+
+                // 재귀 호출: 다음 디바이스에서 서버 탐색 계속
+                if (await DFS(nextDevice.DeviceId, deviceCache, visited, path, cables, depth + 1, maxDepth))
                     return true;
 
-                // 🔙 백트래킹 (경로 및 방문 기록에서 제거)
+                // 백트래킹: 현재 경로에서 서버를 찾지 못했으므로 기록 제거
                 path.RemoveAt(path.Count - 1);
+                cables.RemoveAt(cables.Count - 1);
             }
 
+            // 백트래킹: 모든 경로 탐색 완료 후 방문 상태 해제
             visited.Remove(currentDeviceId);
             return false;
+        }
+
+        private static bool IsValidConnection(
+            Port port,
+            out Device nextDevice,
+            out Cable cable,
+            out Port nextPort)
+        {
+            nextDevice = null!;
+            nextPort = null!;
+            cable = null!;
+
+            var conn = port.Connection;
+            if (conn == null) return false;
+
+            cable = conn.Cable!;
+            nextPort = conn.ToPort!;
+            nextDevice = nextPort?.Device!;
+
+            return cable != null && nextPort != null && nextDevice != null;
         }
 
         /// <summary>

@@ -1,5 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import 'react-flow-renderer/dist/style.css';
+import 'react-flow-renderer/dist/theme-default.css';
+
 import './index.css'
 import App from './App.tsx'
 
