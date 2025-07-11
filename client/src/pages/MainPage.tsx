@@ -1,10 +1,14 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { fetchDevices } from "../api/deviceApi";
+import { fetchTrace } from "../api/traceApi";
 import type { Device } from "../types/device";
+import type { TraceResponse } from "../api/traceApi";
 
 import ControlBar from "../components/ControlBar";
 import NetworkDiagram from "../components/NetworkDiagram";
 import SidePanel from "../components/SidePanel";
+import LoadingSpinner from "../components/LoadingSpinner";
+import ErrorState from "../components/ErrorState";
 
 export default function MainPage() {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -13,6 +17,8 @@ export default function MainPage() {
   const [showProblemOnly, setShowProblemOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [traceResult, setTraceResult] = useState<TraceResponse | null>(null);
+  const [traceError, setTraceError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -21,7 +27,8 @@ export default function MainPage() {
         const data = await fetchDevices();
         if (isMounted) setDevices(data);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "알 수 없는 오류입니다.";
+        const msg =
+          err instanceof Error ? err.message : "알 수 없는 오류입니다.";
         if (isMounted) setError(msg);
         console.error("❌ Device fetch error:", err);
       } finally {
@@ -55,31 +62,32 @@ export default function MainPage() {
     return counts;
   }, [devices]);
 
-  const handleDeviceClick = useCallback((device: Device) => {
+  const handleDeviceClick = useCallback(async (device: Device) => {
     setSelectedDevice(device);
+    setTraceResult(null);
+    setTraceError(null);
+
+    try {
+      const result = await fetchTrace(device.deviceId);
+      setTraceResult(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Trace 로드 실패";
+      setTraceError(msg);
+    }
   }, []);
 
+  // ✅ 로딩 UI
   if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center text-slate-500">
-        로딩 중...
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
+  // ✅ 에러 UI
   if (error) {
     return (
-      <div className="h-screen flex items-center justify-center text-center text-red-500">
-        <div>
-          <p>{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            다시 시도
-          </button>
-        </div>
-      </div>
+      <ErrorState
+        message={error}
+        onRetry={() => window.location.reload()}
+      />
     );
   }
 
@@ -105,11 +113,16 @@ export default function MainPage() {
             devices={filteredDevices}
             selectedDevice={selectedDevice}
             onDeviceClick={handleDeviceClick}
+            traceResult={traceResult}
           />
         </div>
 
         {/* 사이드 패널 */}
-        <SidePanel selectedDevice={selectedDevice} />
+        <SidePanel
+          selectedDevice={selectedDevice}
+          traceResult={traceResult}
+          traceError={traceError}
+        />
       </div>
     </div>
   );

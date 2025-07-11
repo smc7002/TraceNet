@@ -1,10 +1,13 @@
 import type { Device } from "../types/device";
+import type { TraceResponse } from "../api/traceApi";
 
 interface SidePanelProps {
   selectedDevice: Device | null;
+  traceResult: TraceResponse | null;
+  traceError: string | null;
 }
 
-export default function SidePanel({ selectedDevice }: SidePanelProps) {
+export default function SidePanel({ selectedDevice, traceResult, traceError }: SidePanelProps) {
   if (!selectedDevice) {
     return (
       <aside className="w-80 shrink-0 bg-white border-l border-slate-200 p-6 shadow-inner">
@@ -31,23 +34,31 @@ export default function SidePanel({ selectedDevice }: SidePanelProps) {
           <div className="text-slate-700 font-semibold mb-3">📊 장비 정보</div>
           <InfoItem label="IP 주소" value={selectedDevice.ipAddress ?? "-"} />
           <InfoItem label="장비 유형" value={selectedDevice.type} />
-          {/* <InfoItem label="설명" value={selectedDevice.description ?? "없음"} /> */}
         </section>
 
         {/* 🛤️ Trace 결과 */}
         <section>
           <div className="text-slate-700 font-semibold mb-3">🛤️ Trace 결과</div>
-          <div className="bg-slate-50 rounded-md p-3 text-[12px] font-mono space-y-1 text-slate-700">
-            <div>1. 192.168.1.1 (2ms)</div>
-            <div>2. 10.0.0.1 (5ms)</div>
-            <div>3. 203.248.252.1 (15ms)</div>
-            <div>4. 8.8.8.8 (23ms)</div>
-          </div>
+          {traceError ? (
+            <div className="text-red-500 text-sm">{traceError}</div>
+          ) : !traceResult ? (
+            <div className="text-slate-400 text-sm">Trace 정보를 불러오는 중입니다...</div>
+          ) : traceResult.path?.length > 0 ? (
+            <div className="bg-slate-50 rounded-md p-3 text-[12px] font-mono space-y-1 text-slate-700">
+              {traceResult.path.map((device, idx) => (
+                <div key={idx}>
+                  {idx + 1}. {device.name} ({device.ipAddress ?? "-"})
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-slate-400 text-sm">경로 정보가 없습니다.</div>
+          )}
         </section>
 
         {/* 📡 Ping 통계 */}
         <section>
-          <div className="text-slate-700 font-semibold mb-3">📡 Ping 통계</div>
+          <div className="text-slate-700 font-semibold mb-3">📡 Ping 통계 (임시 UI)</div>
           <div className="grid grid-cols-2 gap-3">
             <StatBox label="평균 지연" value="2ms" />
             <StatBox label="가용성" value="99.9%" />
@@ -68,7 +79,6 @@ export default function SidePanel({ selectedDevice }: SidePanelProps) {
   );
 }
 
-// 🔹 공통 컴포넌트
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between items-center py-2 border-b border-slate-100">
