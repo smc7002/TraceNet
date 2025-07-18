@@ -9,6 +9,6 @@ namespace TraceNet.DTOs
         public string Type { get; set; } = string.Empty;
         public int PortCount { get; set; }
         public string IpAddress { get; set; } = string.Empty;
-        public int RackId { get; set; }
+        public int? RackId { get; set; }
     }
 }

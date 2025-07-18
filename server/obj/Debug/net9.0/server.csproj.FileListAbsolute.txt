@@ -163,3 +163,4 @@ C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\server.
 C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\ref\server.dll
 C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\bin\Debug\net9.0\AutoMapper.dll
 C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\bin\Debug\net9.0\AutoMapper.Extensions.Microsoft.DependencyInjection.dll
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\server.sourcelink.json

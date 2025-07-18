@@ -73,17 +73,15 @@ namespace TraceNet.Data
             // 여러 케이블 연결이 하나의 출발 포트를 참조할 수 있음
             modelBuilder.Entity<CableConnection>()
                 .HasOne(cc => cc.FromPort)              // CableConnection이 하나의 FromPort를 가짐
-                .WithMany()                             // Port는 여러 CableConnection을 가질 수 있음
+                .WithMany()                            // Port는 여러 CableConnection을 가질 수 있음
                 .HasForeignKey(cc => cc.FromPortId)     // FromPortId가 외래키
                 .OnDelete(DeleteBehavior.Restrict);     // Port 삭제 시 연결된 CableConnection이 있으면 삭제 방지
 
-            // CableConnection과 ToPort 간의 다대일 관계 설정
-            // 여러 케이블 연결이 하나의 도착 포트를 참조할 수 있음
             modelBuilder.Entity<CableConnection>()
-                .HasOne(cc => cc.ToPort)                // CableConnection이 하나의 ToPort를 가짐
-                .WithMany()                             // Port는 여러 CableConnection을 가질 수 있음
-                .HasForeignKey(cc => cc.ToPortId)       // ToPortId가 외래키
-                .OnDelete(DeleteBehavior.Restrict);     // Port 삭제 시 연결된 CableConnection이 있으면 삭제 방지
+.HasOne(cc => cc.ToPort)
+.WithMany()
+.HasForeignKey(cc => cc.ToPortId)
+.OnDelete(DeleteBehavior.Restrict);
 
             // 🔗 Rack ↔ Device 관계 (단, Switch만 사용)
             modelBuilder.Entity<Rack>()
@@ -91,6 +89,13 @@ namespace TraceNet.Data
                 .WithOne(d => d.Rack)
                 .HasForeignKey(d => d.RackId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // 정방향 1:1 (Port.Connection → CableConnection.FromPort)
+            modelBuilder.Entity<Port>()
+                .HasOne(p => p.Connection)
+                .WithOne(c => c.FromPort)
+                .HasForeignKey<CableConnection>(c => c.FromPortId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

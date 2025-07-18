@@ -1,16 +1,11 @@
 // 📁 src/api/traceApi.ts
 import axios from "axios";
-import type { Device } from "../types/device";
-
-export interface TraceResponse {
-  path: Device[];
-  cableCount: number;
-}
+import type { TraceResponse } from "../types/trace"; // ✅ 여기 중요!
 
 /**
  * 특정 장비의 Trace 경로를 조회합니다.
  * @param deviceId 조회할 장비의 ID
- * @returns TraceResponse { path, cableCount }
+ * @returns TraceResponse { path, cables, ... }
  */
 export async function fetchTrace(deviceId: number): Promise<TraceResponse> {
   try {

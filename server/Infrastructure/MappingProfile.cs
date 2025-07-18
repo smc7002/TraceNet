@@ -11,14 +11,17 @@ namespace TraceNet.Infrastructure
     {
         public MappingProfile()
         {
-            // Device → DeviceDto 변환 매핑
-            CreateMap<Device, DeviceDto>()
-                .ForMember(dest => dest.DeviceId, opt => opt.MapFrom(src => src.DeviceId))
-                .ForMember(dest => dest.Name, opt => opt.MapFrom(src => src.Name))
-                .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type))
-                .ForMember(dest => dest.Status, opt => opt.Ignore())       // 나중에 Ping/Trace 로직에서 설정
-                .ForMember(dest => dest.IpAddress, opt => opt.MapFrom(src => src.IPAddress))
-                .ForMember(dest => dest.RackName, opt => opt.MapFrom(src => src.Rack != null ? src.Rack.Name : null));
+            CreateMap<Port, PortDto>()
+                .ForMember(dest => dest.Connection, opt => opt.MapFrom(src => src.Connection));
+
+            CreateMap<CableConnection, ConnectionDto>()
+                .ForMember(dest => dest.CableConnectionId, opt => opt.MapFrom(src => src.CableConnectionId))
+                .ForMember(dest => dest.CableId, opt => opt.MapFrom(src => src.CableId))
+                .ForMember(dest => dest.ToPortId, opt => opt.MapFrom(src => src.ToPort.PortId))
+                .ForMember(dest => dest.ToDeviceId, opt => opt.MapFrom(src => src.ToPort.Device.DeviceId));
         }
     }
+
+
+
 }

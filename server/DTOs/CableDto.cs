@@ -11,5 +11,7 @@ namespace TraceNet.DTOs
         public string FromPort { get; set; } = null!;
         public string ToDevice { get; set; } = null!;
         public string ToPort { get; set; } = null!;
+        public int FromDeviceId { get; set; }
+        public int ToDeviceId { get; set; }
     }
 }

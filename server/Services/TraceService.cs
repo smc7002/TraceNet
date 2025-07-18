@@ -7,8 +7,7 @@ namespace TraceNet.Services
 {
     /// <summary>
     /// 장비 간 네트워크 연결 경로를 추적하는 서비스 클래스
-    /// DFS 기반으로 서버까지의 물리적 연결을 추적하며,
-    /// 불필요한 전체 로딩을 피하고 on-demand로 필요한 장비만 불러오는 방식으로 성능을 최적화함
+    /// 성능 최적화를 위해 데이터 사전 로딩과 동기 DFS를 활용
     /// </summary>
     public class TraceService
     {
@@ -27,164 +26,249 @@ namespace TraceNet.Services
         /// </summary>
         public async Task<TraceResultDto> TracePathAsync(int startDeviceId, int maxDepth = 20)
         {
-            var deviceCache = new Dictionary<int, Device>();
-            var visited = new HashSet<int>();
-            var path = new List<TraceDto>();
-            var cables = new List<CableEdgeDto>();
+            _logger.LogInformation("트레이스 시작: StartDeviceId={StartDeviceId}", startDeviceId);
 
-            var startDevice = await LoadDeviceWithConnectionsAsync(startDeviceId);
-            if (startDevice == null)
-                throw new KeyNotFoundException($"시작 장비(DeviceId={startDeviceId})를 찾을 수 없습니다.");
-
-            deviceCache[startDeviceId] = startDevice;
-
-            bool found = await DFS(startDeviceId, deviceCache, visited, path, cables, 0, maxDepth);
-
-            if (!found)
-                throw new InvalidOperationException("서버까지의 경로를 찾을 수 없습니다.");
-
-            return new TraceResultDto
+            try
             {
-                StartDeviceName = startDevice.Name,
-                EndDeviceName = path.LastOrDefault()?.ToDevice,
-                Success = true,
-                Path = path,
-                Cables = cables
-            };
+                var deviceCache = await PreloadNetworkDataAsync(startDeviceId, maxDepth);
+
+                _logger.LogInformation("Preload 완료. 캐시된 장비 수: {Count}", deviceCache.Count);
+
+                if (!deviceCache.TryGetValue(startDeviceId, out var startDevice))
+                {
+                    _logger.LogError("❌ 시작 장비를 캐시에서 찾을 수 없음: {StartDeviceId}", startDeviceId);
+                    throw new KeyNotFoundException($"시작 장비(DeviceId={startDeviceId})를 찾을 수 없습니다.");
+                }
+
+                _logger.LogInformation("장비 로드 성공: {DeviceName}", startDevice.Name);
+
+                if (startDevice.Type.Equals("server", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("시작 장비가 이미 서버입니다. 즉시 반환.");
+                    return new TraceResultDto
+                    {
+                        StartDeviceName = startDevice.Name,
+                        EndDeviceName = startDevice.Name,
+                        Success = true,
+                        Path = new List<TraceDto>(),
+                        Cables = new List<CableEdgeDto>()
+                    };
+                }
+
+                _logger.LogInformation("DFS 탐색 진입 직전...");
+                var result = PerformDFSSearch(startDeviceId, deviceCache, maxDepth);
+
+                _logger.LogInformation("DFS 탐색 완료. 성공 여부: {Success}", result.Success);
+
+                if (!result.Success)
+                {
+                    _logger.LogWarning("❌ DFS 탐색 실패. 경로 없음.");
+                    throw new InvalidOperationException("서버까지의 경로를 찾을 수 없습니다.");
+                }
+
+                result.StartDeviceName = startDevice.Name;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "트레이스 실패: StartDeviceId={StartDeviceId}", startDeviceId);
+                throw;
+            }
         }
 
 
         /// <summary>
-        /// DFS 알고리즘을 통해 재귀적으로 연결 경로를 탐색합니다.
-        /// 장비는 탐색 중 on-demand로 불러오며, 순환 및 최대 깊이를 고려합니다.
+        /// 연결된 장비들의 네트워크 데이터를 사전에 로딩합니다.
+        /// BFS 방식으로 maxDepth 깊이까지의 연결된 장비들을 한 번에 로딩
         /// </summary>
-        private const string ServerDeviceType = "Server";
-        private static readonly StringComparison IgnoreCase = StringComparison.OrdinalIgnoreCase;
-
-        private async Task<bool> DFS(
-   int currentDeviceId,
-   Dictionary<int, Device> deviceCache,
-   HashSet<int> visited,
-   List<TraceDto> path,
-   List<CableEdgeDto> cables,
-   int depth,
-   int maxDepth)
+        private async Task<Dictionary<int, Device>> PreloadNetworkDataAsync(int startDeviceId, int maxDepth)
         {
-            // 순환 참조 방지 및 탐색 깊이 제한으로 무한 루프 방지
+            var deviceIds = await GetConnectedDeviceIdsBFS_MemoryBased(startDeviceId, maxDepth);
+
+            var devices = await _context.Devices
+                .Where(d => deviceIds.Contains(d.DeviceId))
+                .Include(d => d.Ports)
+                    .ThenInclude(p => p.Connection)
+                        .ThenInclude(c => c.ToPort)
+                            .ThenInclude(p => p.Device)
+                .Include(d => d.Ports)
+                    .ThenInclude(p => p.Connection)
+                        .ThenInclude(c => c.Cable)
+                .AsSplitQuery()
+                .ToDictionaryAsync(d => d.DeviceId);
+
+            foreach (var device in devices.Values)
+            {
+                foreach (var port in device.Ports)
+                {
+                    var toPort = port.Connection?.ToPort;
+                    if (toPort != null && toPort.Device == null && devices.TryGetValue(toPort.DeviceId, out var toDevice))
+                    {
+                        toPort.Device = toDevice;
+                    }
+                }
+            }
+
+            return devices;
+        }
+
+
+        /// <summary>
+        /// BFS를 사용하여 연결된 장비 ID들을 수집합니다. (EF Core LINQ 대신 메모리 기반)
+        /// </summary>
+        private async Task<HashSet<int>> GetConnectedDeviceIdsBFS_MemoryBased(int startDeviceId, int maxDepth)
+        {
+            var visited = new HashSet<int>();
+            var queue = new Queue<(int DeviceId, int Depth)>();
+
+            var allDevices = await _context.Devices
+                .Include(d => d.Ports)
+                    .ThenInclude(p => p.Connection)
+                        .ThenInclude(c => c.ToPort)
+                            .ThenInclude(p => p.Device)
+                .AsSplitQuery()
+                .ToDictionaryAsync(d => d.DeviceId);
+
+            queue.Enqueue((startDeviceId, 0));
+            visited.Add(startDeviceId);
+
+            while (queue.Count > 0)
+            {
+                var (currentDeviceId, depth) = queue.Dequeue();
+                if (depth >= maxDepth) continue;
+
+                if (!allDevices.TryGetValue(currentDeviceId, out var device)) continue;
+
+                foreach (var port in device.Ports)
+                {
+                    var to = port.Connection?.ToPort?.Device;
+                    if (to != null && visited.Add(to.DeviceId))
+                        queue.Enqueue((to.DeviceId, depth + 1));
+                }
+            }
+
+            return visited;
+        }
+
+
+
+
+        /// <summary>
+        /// 동기 DFS를 사용하여 서버까지의 경로를 탐색합니다.
+        /// </summary>
+        private TraceResultDto PerformDFSSearch(int startDeviceId, Dictionary<int, Device> deviceCache, int maxDepth)
+        {
+            var visited = new HashSet<int>();
+            var pathStack = new Stack<TraceDto>();
+            var cableStack = new Stack<CableEdgeDto>();
+
+            if (DFS(startDeviceId, deviceCache, visited, pathStack, cableStack, 0, maxDepth))
+            {
+                var path = pathStack.Reverse().ToList();
+                var cables = cableStack.Reverse().ToList();
+
+                return new TraceResultDto
+                {
+                    EndDeviceName = path.LastOrDefault()?.ToDevice,
+                    Success = true,
+                    Path = path,
+                    Cables = cables
+                };
+            }
+
+            return new TraceResultDto { Success = false };
+        }
+
+        /// <summary>
+        /// 동기 DFS 알고리즘으로 서버까지의 경로를 탐색합니다.
+        /// Stack을 사용하여 백트래킹을 효율적으로 처리합니다.
+        /// </summary>
+        private bool DFS(
+            int currentDeviceId,
+            Dictionary<int, Device> deviceCache,
+            HashSet<int> visited,
+            Stack<TraceDto> pathStack,
+            Stack<CableEdgeDto> cableStack,
+            int depth,
+            int maxDepth)
+        {
             if (visited.Contains(currentDeviceId) || depth > maxDepth)
                 return false;
 
-            // 현재 노드를 방문 표시 (백트래킹을 위해 나중에 제거됨)
-            visited.Add(currentDeviceId);
-
-            // 디바이스 정보를 캐시에서 조회하거나 DB에서 로드
             if (!deviceCache.TryGetValue(currentDeviceId, out var device))
             {
-                try
-                {
-                    // 비동기 DB 조회: 포트 및 연결 정보 포함
-                    device = await LoadDeviceWithConnectionsAsync(currentDeviceId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "[TraceService] Device 로딩 실패 (DeviceId={DeviceId})", currentDeviceId);
-                    return false;
-                }
-
-                if (device == null)
-                    return false;
-
-                // 성능 향상을 위해 로드된 디바이스를 캐시에 저장
-                deviceCache[currentDeviceId] = device;
+                _logger.LogWarning("캐시에서 장비를 찾을 수 없음: DeviceId={DeviceId}", currentDeviceId);
+                return false;
             }
 
-            // 목표 조건: 서버 타입 디바이스 발견 시 탐색 성공
-            if (device.Type.Equals(ServerDeviceType, IgnoreCase))
-                return true;
+            _logger.LogInformation("DFS 탐색 중: {DeviceId} ({DeviceName}), 깊이={Depth}", device.DeviceId, device.Name, depth);
 
-            // 현재 디바이스의 모든 포트를 탐색하여 연결된 다음 디바이스로 이동
+            visited.Add(currentDeviceId);
+
+            if (device.Type.Equals("server", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogInformation("서버 발견: {DeviceName}", device.Name);
+                return true;
+            }
+
             foreach (var port in device.Ports)
             {
-                // 연결 유효성 검사: 케이블, 포트, 디바이스가 모두 존재하는지 확인
-                if (!IsValidConnection(port, out var nextDevice, out var cable, out var nextPort))
-                    continue;
+                var connections = GetValidConnections(port);
 
-                // 자기 자신으로의 연결 제외 (루프백 방지)
-                if (nextDevice.DeviceId == currentDeviceId)
-                    continue;
-
-                // 경로 추적을 위한 연결 정보 기록 (UI 표시용)
-                path.Add(new TraceDto
+                foreach (var (nextDevice, cable, nextPort) in connections)
                 {
-                    CableId = cable.CableId,
-                    FromDeviceId = device.DeviceId,
-                    FromDevice = device.Name,
-                    FromPort = port.Name,
-                    ToDeviceId = nextDevice.DeviceId,
-                    ToDevice = nextDevice.Name,
-                    ToPort = nextPort.Name
-                });
+                    if (visited.Contains(nextDevice.DeviceId)) continue;
 
-                // 네트워크 시각화를 위한 간선(Edge) 정보 기록
-                cables.Add(new CableEdgeDto
-                {
-                    CableId = cable.CableId,
-                    FromPortId = port.PortId,
-                    FromDeviceId = device.DeviceId,
-                    ToPortId = nextPort.PortId,
-                    ToDeviceId = nextDevice.DeviceId
-                });
+                    var trace = new TraceDto
+                    {
+                        CableId = cable.CableId,
+                        FromDeviceId = device.DeviceId,
+                        FromDevice = device.Name,
+                        FromPort = port.Name,
+                        ToDeviceId = nextDevice.DeviceId,
+                        ToDevice = nextDevice.Name,
+                        ToPort = nextPort.Name
+                    };
 
-                // 재귀 호출: 다음 디바이스에서 서버 탐색 계속
-                if (await DFS(nextDevice.DeviceId, deviceCache, visited, path, cables, depth + 1, maxDepth))
-                    return true;
+                    var cableEdge = new CableEdgeDto
+                    {
+                        CableId = cable.CableId,
+                        FromPortId = port.PortId,
+                        FromDeviceId = device.DeviceId,
+                        ToPortId = nextPort.PortId,
+                        ToDeviceId = nextDevice.DeviceId
+                    };
 
-                // 백트래킹: 현재 경로에서 서버를 찾지 못했으므로 기록 제거
-                path.RemoveAt(path.Count - 1);
-                cables.RemoveAt(cables.Count - 1);
+                    pathStack.Push(trace);
+                    cableStack.Push(cableEdge);
+
+                    if (DFS(nextDevice.DeviceId, deviceCache, visited, pathStack, cableStack, depth + 1, maxDepth))
+                        return true;
+
+                    pathStack.Pop();
+                    cableStack.Pop();
+                }
             }
 
-            // 백트래킹: 모든 경로 탐색 완료 후 방문 상태 해제
             visited.Remove(currentDeviceId);
             return false;
         }
 
-        private static bool IsValidConnection(
-            Port port,
-            out Device nextDevice,
-            out Cable cable,
-            out Port nextPort)
+        /// <summary>
+        /// 포트 연결의 유효성을 검사합니다. 양방향 연결을 모두 고려합니다.
+        /// </summary>
+        private static List<(Device nextDevice, Cable cable, Port nextPort)> GetValidConnections(Port port)
         {
-            nextDevice = null!;
-            nextPort = null!;
-            cable = null!;
+            var result = new List<(Device, Cable, Port)>();
 
             var conn = port.Connection;
-            if (conn == null) return false;
+            if (conn?.Cable != null && conn.ToPort?.Device != null)
+            {
+                result.Add((conn.ToPort.Device, conn.Cable, conn.ToPort));
+            }
 
-            cable = conn.Cable!;
-            nextPort = conn.ToPort!;
-            nextDevice = nextPort?.Device!;
-
-            return cable != null && nextPort != null && nextDevice != null;
+            return result;
         }
 
-        /// <summary>
-        /// 지정된 장비 ID를 기반으로 연결 정보까지 포함하여 장비를 로딩합니다.
-        /// 포트 → 연결 → 케이블 및 연결된 포트/장비까지 포함됩니다.
-        /// </summary>
-        private async Task<Device?> LoadDeviceWithConnectionsAsync(int deviceId)
-        {
-            return await _context.Devices
-                .Where(d => d.DeviceId == deviceId)
-                .Include(d => d.Ports)
-                    .ThenInclude(p => p.Connection)
-                        .ThenInclude(conn => conn.Cable)
-                .Include(d => d.Ports)
-                    .ThenInclude(p => p.Connection)
-                        .ThenInclude(conn => conn.ToPort)
-                            .ThenInclude(p => p.Device)
-                .FirstOrDefaultAsync();
-        }
     }
 }

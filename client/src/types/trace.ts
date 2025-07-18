@@ -1,5 +1,17 @@
+// trace.ts
+
+export interface TraceDto {
+  cableId: number;
+  fromDeviceId: number;
+  fromDevice: string;
+  fromPort: string;
+  toDeviceId: number;
+  toDevice: string;
+  toPort: string;
+}
+
 export interface CableEdge {
-  cableId: string;
+  cableId: number;
   fromPortId: number;
   fromDeviceId: number;
   toPortId: number;
@@ -10,6 +22,6 @@ export interface TraceResponse {
   startDeviceName: string;
   endDeviceName?: string;
   success: boolean;
-  //path: Device[];          // 이미 정의된 Device 타입 사용
-  cables: CableEdge[];     // 🔥 여기에 포함됨
+  path: TraceDto[];       
+  cables: CableEdge[];    
 }

@@ -1,5 +1,6 @@
 // 📁 client/src/api/cableApi.ts
 import axios from "axios";
+import type { CableDto } from "../types/cable";
 
 export interface CableConnection {
   cableId: string;
@@ -20,5 +21,10 @@ export interface CableConnection {
 // 📡 지정된 deviceId에서 trace된 cable 목록 가져오기
 export async function fetchTraceCables(deviceId: number): Promise<CableConnection[]> {
   const res = await axios.get(`/api/trace/cables/${deviceId}`);
+  return res.data;
+}
+
+export async function fetchCables(): Promise<CableDto[]> {
+  const res = await axios.get("/api/cable");
   return res.data;
 }

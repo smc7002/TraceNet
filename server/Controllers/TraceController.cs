@@ -27,13 +27,15 @@ namespace TraceNet.Controllers
         [HttpGet("{deviceId}")]
         public async Task<ActionResult<TraceResultDto>> TraceFrom(int deviceId)
         {
+            Console.WriteLine($"[🌐 TraceController] 호출됨 - deviceId: {deviceId}");
+
             try
             {
                 var result = await _traceService.TracePathAsync(deviceId);
 
-                // Path는 존재하지만 비어 있는 경우 (이론상 없음 - 방어적으로 처리)
-                if (result.Path.Count == 0)
-                    return NotFound(new { message = "경로를 찾을 수 없습니다." });
+                // ❗ 명시적으로 탐색 실패 시
+                if (!result.Success)
+                    return NotFound(new { message = "서버까지의 경로를 찾을 수 없습니다." });
 
                 // ✅ 케이블도 포함된 TraceResultDto 전체 반환
                 return Ok(result);
@@ -51,7 +53,8 @@ namespace TraceNet.Controllers
             catch (Exception ex)
             {
                 // 기타 예상치 못한 오류 → 전역 미들웨어로 위임 가능
-                throw new ApplicationException("경로 추적 중 오류가 발생했습니다.", ex);
+                Console.WriteLine($"[❌ TraceController 오류] {ex.Message}");
+                return StatusCode(500, new { message = ex.Message });
             }
         }
     }

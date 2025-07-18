@@ -9,9 +9,9 @@ namespace TraceNet.Models
     {
         [Key]
         public string CableId { get; set; } = null!;  // e.g., "CBL-001"
-
+    
         public string? Description { get; set; }
 
-        public CableConnection? Connection { get; set; }
+        public virtual CableConnection? Connection { get; set; }
     }
 }

@@ -1,3 +1,5 @@
+//Device.cs
+
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -23,8 +25,8 @@ namespace TraceNet.Models
 
         public int? RackId { get; set; }        
 
-        public Rack? Rack { get; set; }        
+        public virtual Rack? Rack { get; set; }
 
-        public List<Port> Ports { get; set; } = new();
+        public virtual List<Port> Ports { get; set; } = new();
     }
 }

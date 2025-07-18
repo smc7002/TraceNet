@@ -1,17 +1,27 @@
+// Program.cs
+
 using Microsoft.EntityFrameworkCore;
 using TraceNet.Data;
 using TraceNet.Services;
 using AutoMapper;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using TraceNet.DTOs; // ✅ DTOs 네임스페이스를 통해 프로필 인식
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 🔌 Add DbContext
 builder.Services.AddDbContext<TraceNetDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
+           .ConfigureWarnings(warnings =>
+           {
+               warnings.Ignore(CoreEventId.NavigationBaseIncludeIgnored);
+           });
+});
 
 // 🔧 Add AutoMapper with all profiles in current assembly
 builder.Services.AddAutoMapper(typeof(DeviceProfile));
+builder.Services.AddScoped<DeviceService>();
 
 // 🔧 Add Controllers with JSON 설정 (순환 참조 방지)
 builder.Services.AddControllers()

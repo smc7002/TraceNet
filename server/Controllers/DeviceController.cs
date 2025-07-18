@@ -47,7 +47,7 @@ namespace TraceNet.Controllers
         /// POST: api/device
         /// </summary>
         [HttpPost]
-        public async Task<ActionResult<Device>> CreateDevice(CreateDeviceDto dto)
+        public async Task<ActionResult<Device>> CreateDevice([FromBody] CreateDeviceDto dto)
         {
             var device = _mapper.Map<Device>(dto);
             var created = await _deviceService.CreateAsync(device);
@@ -55,7 +55,9 @@ namespace TraceNet.Controllers
             if (created == null)
                 return BadRequest("Invalid device data.");
 
-            return CreatedAtAction(nameof(GetDevices), new { id = created.DeviceId }, created);
+            var createdDto = _mapper.Map<DeviceDto>(created);
+            return CreatedAtAction(nameof(GetDevices), new { id = createdDto.DeviceId }, createdDto);
+
         }
 
         /// <summary>

@@ -1,3 +1,5 @@
+// Port.cs
+
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -7,21 +9,17 @@ namespace TraceNet.Models
     /// Represents a physical port on a device.
     /// </summary>
     public class Port
-    {
-        [Key]
-        public int PortId { get; set; }
+{
+    public int PortId { get; set; }
 
-        [Required]
-        public string Name { get; set; } = null!; // e.g., "Port 1", "Eth0"
+    public string Name { get; set; } = null!;
 
-        [ForeignKey("Device")]
-        public int DeviceId { get; set; }
+    public int DeviceId { get; set; }
+    public virtual Device Device { get; set; } = null!;
 
-        public Device Device { get; set; } = null!;
+    // ✅ 정방향 연결 (FromPort)
+    public int? ConnectionCableConnectionId { get; set; }
+    public virtual CableConnection? Connection { get; set; }
+}
 
-        public int? ConnectionCableConnectionId { get; set; }
-
-        public CableConnection? Connection { get; set; }
-
-    }
 }

@@ -1,3 +1,5 @@
+// CableConnection.cs
+
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -8,25 +10,16 @@ namespace TraceNet.Models
     /// </summary>
     public class CableConnection
     {
-        [Key]
         public int CableConnectionId { get; set; }
 
-        [Required]
-        [ForeignKey("Cable")]
-        public string CableId { get; set; } = null!;
-
-        public Cable Cable { get; set; } = null!;
-
-        [Required]
-        [ForeignKey("FromPort")]
         public int FromPortId { get; set; }
+        public virtual Port FromPort { get; set; } = null!;
 
-        public Port FromPort { get; set; } = null!;
-
-        [Required]
-        [ForeignKey("ToPort")]
         public int ToPortId { get; set; }
+        public virtual Port ToPort { get; set; } = null!;
 
-        public Port ToPort { get; set; } = null!;
+        public String CableId { get; set; } = null!;
+        public virtual Cable Cable { get; set; } = null!;
     }
+
 }
