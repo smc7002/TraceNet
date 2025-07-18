@@ -6,8 +6,6 @@ export interface Port {
   name: string;
   connectionCableConnectionId?: number;
   deviceId: number;
-
-  // ✅ 아래 두 줄을 추가
   connection?: CableConnection;
   toConnections?: CableConnection[];
 }

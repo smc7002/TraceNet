@@ -118,7 +118,10 @@ export default function MainPage() {
     console.log("🟢 traceResult.cables:", traceResult?.cables ?? []);
     console.log("🟢 traceEdges:", traceEdges);
     console.log("🧩 allEdges.length:", allEdges.length);
-    console.log("📦 Node ID 목록:", nodes.map((n) => n.id));
+    console.log(
+      "📦 Node ID 목록:",
+      nodes.map((n) => n.id)
+    );
     console.log(
       "📐 layoutedNodes:",
       layoutedN.map((n) => ({
@@ -201,6 +204,7 @@ export default function MainPage() {
             edges={layoutedEdges}
             selectedDevice={selectedDevice}
             onDeviceClick={handleDeviceClick}
+            onCanvasClick={() => setSelectedDevice(null)}
             devices={devices}
           />
         </div>
@@ -209,6 +213,15 @@ export default function MainPage() {
           selectedDevice={selectedDevice}
           traceResult={traceResult}
           traceError={traceError}
+          setSelectedDevice={setSelectedDevice}
+          refetchDevices={async () => {
+            const devices = await fetchDevices();
+            setDevices(devices); // ✅ 상태 갱신
+          }}
+          refetchCables={async () => {
+            const cables = await fetchCables();
+            setAllCables(cables); // ✅ 상태 갱신
+          }}
         />
       </div>
     </div>

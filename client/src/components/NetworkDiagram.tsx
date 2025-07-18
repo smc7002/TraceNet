@@ -16,6 +16,7 @@ interface NetworkDiagramProps {
   edges: Edge[];
   selectedDevice: Device | null;
   onDeviceClick: (device: Device) => void;
+  onCanvasClick: () => void; // ✅ 추가됨
   devices: Device[];
 }
 
@@ -27,6 +28,7 @@ export default function NetworkDiagram({
   edges,
   selectedDevice,
   onDeviceClick,
+  onCanvasClick, // ✅ props로 받음
   devices,
 }: NetworkDiagramProps) {
   const selectedId = selectedDevice?.deviceId.toString() ?? null;
@@ -49,7 +51,6 @@ export default function NetworkDiagram({
     );
   };
 
-  // 🔧 모든 엣지에 기본 스타일 주입 (안 보일 위험 방지)
   const styledEdges: Edge[] = edges.map((edge) => ({
     ...edge,
     style: {
@@ -69,8 +70,8 @@ export default function NetworkDiagram({
         }))}
         edges={styledEdges}
         onNodeClick={handleNodeClick}
+        onPaneClick={onCanvasClick} // ✅ 여기 추가됨
         fitView
-        //defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         nodesDraggable={true}
         nodesConnectable={false}
         zoomOnScroll={true}
