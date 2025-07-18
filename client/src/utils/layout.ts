@@ -11,7 +11,11 @@ const nodeHeight = 60;
 export function getDagreLayoutedElements(nodes: Node[], edges: Edge[]) {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({ rankdir: "LR" }); // → 방향 트리 (좌→우)
+  dagreGraph.setGraph({
+  rankdir: "LR",        // 좌 → 우 정렬
+  nodesep: 80,          // ✅ 노드 간 수평 거리 (기본: 50)
+  ranksep: 120,         // ✅ 계층 간 수직 거리 (기본: 50)
+});
 
   nodes.forEach((node) => {
     dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });

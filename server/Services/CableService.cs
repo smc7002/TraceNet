@@ -20,17 +20,15 @@ namespace TraceNet.Services
         /// 전체 케이블 + 연결 + 포트 정보 조회
         /// 시각화 다이어그램 JSON 용도로 사용됨
         /// </summary>
-        public async Task<List<Cable>> GetAllWithConnectionsAsync()
+        public async Task<List<CableConnection>> GetAllWithConnectionsAsync()
         {
-            return await _context.Cables
-                .Include(c => c.Connection)
-                    .ThenInclude(conn => conn.FromPort)
-                        .ThenInclude(p => p.Device)
-                .Include(c => c.Connection)
-                    .ThenInclude(conn => conn.ToPort)
-                        .ThenInclude(p => p.Device)
+            return await _context.CableConnections
+                .Include(cc => cc.Cable)
+                .Include(cc => cc.FromPort).ThenInclude(p => p.Device)
+                .Include(cc => cc.ToPort).ThenInclude(p => p.Device)
                 .ToListAsync();
         }
+
 
         /// <summary>
         /// 새 케이블과 연결 정보를 함께 생성
