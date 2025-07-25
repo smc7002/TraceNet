@@ -33,5 +33,16 @@ namespace TraceNet.Services
         {
             return await _context.Ports.AnyAsync(p => p.PortId == portId);
         }
+
+        /// <summary>
+        /// 모든 포트를 장비 정보와 함께 조회
+        /// </summary>
+        public async Task<List<Port>> GetAllWithDeviceAsync()
+        {
+            return await _context.Ports
+                .Include(p => p.Device)
+                .OrderBy(p => p.PortId)
+                .ToListAsync();
+        }
     }
 }

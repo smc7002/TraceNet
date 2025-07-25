@@ -30,17 +30,15 @@ namespace TraceNet.Controllers
             {
                 var devices = await _deviceService.GetAllAsync();
 
-                if (devices == null || !devices.Any())
-                    return NoContent(); // 데이터 없음
-
-                return Ok(devices); // 정상 반환
+                // ✅ 항상 배열로 반환
+                return Ok(devices ?? new List<DeviceDto>());
             }
             catch (Exception ex)
             {
-                // 예외는 전역 ExceptionMiddleware에서 처리되므로 재던짐
                 throw new ApplicationException("장비 목록 조회 중 오류 발생", ex);
             }
         }
+
 
         /// <summary>
         /// 📥 새로운 장치 생성 및 포트 자동 생성

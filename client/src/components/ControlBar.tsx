@@ -1,10 +1,11 @@
+import { useRef } from "react";
+
 interface ControlBarProps {
   onRefresh: () => void;
   onToggleProblemOnly: () => void;
   showProblemOnly: boolean;
   searchQuery: string;
   onSearchChange: (value: string) => void;
-
   statusCounts: {
     Online: number;
     Offline: number;
@@ -20,6 +21,41 @@ export default function ControlBar({
   onSearchChange,
   statusCounts,
 }: ControlBarProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/import", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const { message } = await res.json();
+        alert("❌ 업로드 실패: " + message);
+        return;
+      }
+
+      alert("✅ JSON 파일 업로드 완료!");
+      onRefresh(); // 업로드 후 장비/케이블 재로딩
+    } catch (err) {
+      alert("업로드 중 오류 발생");
+      console.error(err);
+    } finally {
+      e.target.value = ""; // 같은 파일 다시 선택 가능하게
+    }
+  };
+
   return (
     <div className="w-full bg-white border-b border-slate-200 shadow-sm px-6 py-3 flex items-center gap-4">
       {/* 🔍 검색창 */}
@@ -62,6 +98,21 @@ export default function ControlBar({
       >
         🔄 새로고침
       </button>
+
+      {/* 📂 JSON 업로드 */}
+      <button
+        onClick={handleImportClick}
+        className="px-3 py-2 rounded-md text-sm bg-slate-600 text-white border border-slate-600 hover:bg-slate-700 transition"
+      >
+        📂 JSON 업로드
+      </button>
+      <input
+        type="file"
+        accept=".json"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        className="hidden"
+      />
     </div>
   );
 }

@@ -31,25 +31,36 @@ namespace TraceNet.Controllers
         {
             try
             {
-                var cables = await _cableService.GetAllWithConnectionsAsync();
+                var connections = await _cableService.GetAllWithConnectionsAsync();
 
-                if (cables == null || !cables.Any())
-                    return NoContent(); // 204 No Content: 케이블 없음
+                if (connections == null || !connections.Any())
+                    return Ok(new List<CableDto>()); // 항상 [] 반환 (204 말고!)
 
-                var cableDtos = _mapper.Map<List<CableDto>>(cables);
-                return Ok(cableDtos); // 200 OK + 변환된 DTO 리스트
+                // ✅ 수동 매핑: 관계 따라 값 추출
+                var cableDtos = connections.Select(conn => new CableDto
+                {
+                    CableId = conn.Cable.CableId,
+                    Description = conn.Cable.Description,
+                    FromDevice = conn.FromPort.Device.Name,
+                    FromPort = conn.FromPort.Name,
+                    ToDevice = conn.ToPort.Device.Name,
+                    ToPort = conn.ToPort.Name,
+                    FromDeviceId = conn.FromPort.DeviceId,
+                    ToDeviceId = conn.ToPort.DeviceId
+                }).ToList();
+
+                return Ok(cableDtos); // 200 OK
             }
             catch (Exception ex)
             {
-                // 전역 예외 미들웨어로 위임
                 throw new ApplicationException("케이블 목록 조회 중 오류 발생", ex);
             }
         }
 
+
         /// <summary>
         /// 📥 새 케이블 + 연결 생성
         /// </summary>
-        [HttpPost]
         [HttpPost]
         public async Task<ActionResult<Cable>> CreateCable(CreateCableDto dto)
         {

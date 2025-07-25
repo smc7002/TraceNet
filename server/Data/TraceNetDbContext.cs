@@ -1,3 +1,6 @@
+// TraceNetDbContext.cs
+// TraceNet 프로젝트의 Entity Framework Core 데이터베이스 컨텍스트
+
 using Microsoft.EntityFrameworkCore;
 using TraceNet.Models;
 

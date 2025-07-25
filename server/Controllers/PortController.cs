@@ -29,5 +29,16 @@ namespace TraceNet.Controllers
 
             return Ok(ports);
         }
+
+        /// <summary>
+        /// 전체 포트 목록 조회 (장비 포함)
+        /// GET: /api/ports
+        /// </summary>
+        [HttpGet("/api/ports")]
+        public async Task<ActionResult<IEnumerable<Port>>> GetAllPorts()
+        {
+            var ports = await _portService.GetAllWithDeviceAsync(); // ✅ 장비 포함
+            return Ok(ports);
+        }
     }
 }

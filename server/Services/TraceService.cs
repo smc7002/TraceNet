@@ -166,14 +166,19 @@ namespace TraceNet.Services
             {
                 var path = pathStack.Reverse().ToList();
                 var cables = cableStack.Reverse().ToList();
+                var uniqueCables = cables
+                    .GroupBy(c => c.CableId)
+                    .Select(g => g.First())
+                    .ToList();
 
                 return new TraceResultDto
                 {
                     EndDeviceName = path.LastOrDefault()?.ToDevice,
                     Success = true,
                     Path = path,
-                    Cables = cables
+                    Cables = uniqueCables
                 };
+
             }
 
             return new TraceResultDto { Success = false };

@@ -77,17 +77,21 @@ namespace TraceNet.Services
         {
             var portIds = new[] { connection.FromPortId, connection.ToPortId };
 
-            // 포트 존재 여부
-            var existingPortIds = await _context.Ports
+            // 포트 존재 여부 및 장비 정보 포함 조회
+            var ports = await _context.Ports
+                .Include(p => p.Device)
                 .Where(p => portIds.Contains(p.PortId))
-                .Select(p => p.PortId)
                 .ToListAsync();
 
-            if (existingPortIds.Count != 2)
+            if (ports.Count != 2)
             {
-                var missing = portIds.Except(existingPortIds);
+                var existingIds = ports.Select(p => p.PortId);
+                var missing = portIds.Except(existingIds);
                 throw new InvalidOperationException($"존재하지 않는 포트 ID: {string.Join(", ", missing)}");
             }
+
+            var fromPort = ports.First(p => p.PortId == connection.FromPortId);
+            var toPort = ports.First(p => p.PortId == connection.ToPortId);
 
             // 중복 연결 여부
             bool anyConnected = await _context.CableConnections
@@ -95,7 +99,19 @@ namespace TraceNet.Services
 
             if (anyConnected)
                 throw new InvalidOperationException("포트가 이미 다른 케이블에 연결되어 있습니다.");
+
+            // ✅ 장비 유형 검사: PC는 반드시 SWITCH와만 연결
+            string fromType = fromPort.Device.Type.ToUpper();
+            string toType = toPort.Device.Type.ToUpper();
+
+            bool isPCToInvalid =
+                (fromType == "PC" && toType != "SWITCH") ||
+                (toType == "PC" && fromType != "SWITCH");
+
+            if (isPCToInvalid)
+                throw new InvalidOperationException("PC는 SWITCH와만 연결할 수 있습니다.");
         }
+
 
 
         /// <summary>
