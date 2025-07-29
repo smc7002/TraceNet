@@ -148,36 +148,39 @@ export function getNewRadialLayoutedElements(
   const NODE_WIDTH = 180;
   const NODE_HEIGHT = 60;
 
+  // 노드 타입별 분류
   const server = inputNodes.find((n) => n.data?.type === "server");
   const switches = inputNodes.filter((n) => n.data?.type === "switch");
   const pcs = inputNodes.filter((n) => n.data?.type === "pc");
 
+  // 서버가 없으면 원본 반환
   if (!server) return { nodes: inputNodes, edges: inputEdges };
 
-  // 서버 위치 고정
-  const positionedNodes: Node[] = [
-    {
-      ...server,
-      position: {
-        x: center.x - NODE_WIDTH / 2,
-        y: center.y - NODE_HEIGHT / 2,
-      },
-      sourcePosition: Position.Bottom,
-      targetPosition: Position.Top,
-      data: { ...server.data, mode: "radial" },
-    },
-  ];
+  // 위치가 계산된 노드들을 저장할 Map (중복 방지)
+  const positionedNodesMap = new Map<string, Node>();
 
-  // 스위치 원형 배치
-  const radius = 400;
-  const angleStep = (2 * Math.PI) / Math.max(switches.length, 1);
+  // 1. 서버 위치 고정 (중앙)
+  positionedNodesMap.set(server.id, {
+    ...server,
+    position: {
+      x: center.x - NODE_WIDTH / 2,
+      y: center.y - NODE_HEIGHT / 2,
+    },
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
+    data: { ...server.data, mode: "radial" },
+  });
+
+  // 2. 스위치 원형 배치
+  const switchRadius = 400;
+  const switchAngleStep = (2 * Math.PI) / Math.max(switches.length, 1);
 
   switches.forEach((sw, i) => {
-    const angle = i * angleStep;
-    const x = center.x + Math.cos(angle) * radius;
-    const y = center.y + Math.sin(angle) * radius;
+    const angle = i * switchAngleStep;
+    const x = center.x + Math.cos(angle) * switchRadius;
+    const y = center.y + Math.sin(angle) * switchRadius;
 
-    positionedNodes.push({
+    positionedNodesMap.set(sw.id, {
       ...sw,
       position: {
         x: x - NODE_WIDTH / 2,
@@ -189,32 +192,43 @@ export function getNewRadialLayoutedElements(
     });
   });
 
-  // 스위치에 연결된 PC 배치
+  // 3. PC를 각 스위치 주변에 배치
+  const pcSet = new Set<string>(); // 이미 배치된 PC 추적
+
   switches.forEach((sw) => {
-    const relatedPCs = inputEdges
-      .filter(
-        (e) =>
-          (e.source === sw.id && pcs.find((p) => p.id === e.target)) ||
-          (e.target === sw.id && pcs.find((p) => p.id === e.source))
-      )
-      .map((e) => (e.source === sw.id ? e.target : e.source))
-      .map((id) => pcs.find((p) => p.id === id)!)
-      .filter(Boolean);
+    // 현재 스위치에 연결된 PC 찾기
+    const connectedPCs = inputEdges
+      .filter((e) => {
+        const isSourceSwitch = e.source === sw.id;
+        const isTargetSwitch = e.target === sw.id;
+        const connectedId = isSourceSwitch ? e.target : isTargetSwitch ? e.source : null;
+        
+        if (!connectedId) return false;
+        
+        const connectedPC = pcs.find((p) => p.id === connectedId);
+        return connectedPC && !pcSet.has(connectedId);
+      })
+      .map((e) => {
+        const pcId = e.source === sw.id ? e.target : e.source;
+        return pcs.find((p) => p.id === pcId);
+      })
+      .filter((pc): pc is Node => pc !== undefined);
 
-    const base = positionedNodes.find((n) => n.id === sw.id)?.position;
-    if (!base) return;
+    // 스위치의 위치 가져오기
+    const switchNode = positionedNodesMap.get(sw.id);
+    if (!switchNode || !switchNode.position) return;
 
-    const pcRadius = 100 + relatedPCs.length * 4;
-    const rawStep = (2 * Math.PI) / Math.max(relatedPCs.length, 1);
-    const angleStep = Math.max(rawStep, Math.PI / 18);
-    const startAngle = -Math.PI / 2;
+    const switchPos = switchNode.position;
+    const pcRadius = 150 + connectedPCs.length * 5; // 동적 반지름
+    const pcAngleStep = (2 * Math.PI) / Math.max(connectedPCs.length, 1);
+    const startAngle = -Math.PI / 2; // 12시 방향부터 시작
 
-    relatedPCs.forEach((pc, idx) => {
-      const angle = startAngle + idx * angleStep;
-      const px = base.x + NODE_WIDTH / 2 + Math.cos(angle) * pcRadius;
-      const py = base.y + NODE_HEIGHT / 2 + Math.sin(angle) * pcRadius;
+    connectedPCs.forEach((pc, idx) => {
+      const angle = startAngle + idx * pcAngleStep;
+      const px = switchPos.x + NODE_WIDTH / 2 + Math.cos(angle) * pcRadius;
+      const py = switchPos.y + NODE_HEIGHT / 2 + Math.sin(angle) * pcRadius;
 
-      positionedNodes.push({
+      positionedNodesMap.set(pc.id, {
         ...pc,
         position: {
           x: px - NODE_WIDTH / 2,
@@ -224,21 +238,67 @@ export function getNewRadialLayoutedElements(
         targetPosition: Position.Top,
         data: { ...pc.data, mode: "radial" },
       });
+      
+      pcSet.add(pc.id);
     });
   });
 
-  const finalNodes = positionedNodes.filter(
-    (n) =>
-      typeof n.position?.x === "number" &&
-      typeof n.position?.y === "number" &&
-      !Number.isNaN(n.position.x) &&
-      !Number.isNaN(n.position.y)
-  );
+  // 4. 위치가 계산되지 않은 노드들 처리 (고아 노드)
+  inputNodes.forEach((node) => {
+    if (!positionedNodesMap.has(node.id)) {
+      console.warn(`⚠️ 노드 ${node.id} (${node.data?.label})의 위치가 계산되지 않았습니다. 기본 위치 할당.`);
+      
+      // 타입별로 다른 기본 위치 할당
+      let defaultX = 100;
+      let defaultY = 100;
+      
+      if (node.data?.type === "pc") {
+        defaultX = 100;
+        defaultY = 100 + (positionedNodesMap.size % 5) * 80;
+      } else if (node.data?.type === "switch") {
+        defaultX = center.x + 600;
+        defaultY = center.y;
+      }
 
+      positionedNodesMap.set(node.id, {
+        ...node,
+        position: { x: defaultX, y: defaultY },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+        data: { ...node.data, mode: "radial" },
+      });
+    }
+  });
+
+  // 5. 최종 노드 배열 생성 및 검증
+  const finalNodes = Array.from(positionedNodesMap.values()).filter((n) => {
+    const valid = 
+      n.position &&
+      typeof n.position.x === "number" &&
+      typeof n.position.y === "number" &&
+      !Number.isNaN(n.position.x) &&
+      !Number.isNaN(n.position.y) &&
+      Number.isFinite(n.position.x) &&
+      Number.isFinite(n.position.y);
+    
+    if (!valid) {
+      console.error(`❌ 노드 ${n.id}의 위치가 유효하지 않습니다:`, n.position);
+    }
+    
+    return valid;
+  });
+
+  // 6. 엣지 처리 - custom 타입 적용 및 메타데이터 추가
   const finalEdges = inputEdges.map((e) => ({
     ...e,
     type: "custom",
+    data: {
+      ...e.data,
+      mode: "radial",
+    },
   }));
+
+  console.log(`📊 Radial 레이아웃 결과: ${finalNodes.length}개 노드, ${finalEdges.length}개 엣지`);
 
   return { nodes: finalNodes, edges: finalEdges };
 }

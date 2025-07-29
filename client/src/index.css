@@ -18,3 +18,11 @@
   font-weight: bold;
   color: #333;
 }
+@keyframes dash {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -100;
+  }
+}

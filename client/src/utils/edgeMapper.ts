@@ -169,45 +169,29 @@ export function mapTraceCablesToEdges(
   timestamp: number
 ): Edge[] {
   return cables.map((cable, index) => ({
-    /**
-     * 복합 고유 식별자 생성
-     * 
-     * 동일한 케이블에 대한 여러 추적 세션을 구분하기 위해
-     * 케이블ID + 포트ID + 타임스탬프 + 인덱스를 조합합니다.
-     */
     id: `trace-${cable.cableId}-${cable.fromPortId}-${cable.toPortId}-${timestamp}-${index}`,
-    
-    /** 연결 노드 정보 */
     source: cable.fromDeviceId.toString(),
     target: cable.toDeviceId.toString(),
     
-    /** 계층형 레이아웃 핸들 (추적은 주로 상세 분석에서 사용) */
-    sourceHandle: "source",
-    targetHandle: "target",
-
-    /** 추적 전용 시각적 스타일 */
+    // Radial 모드에서는 sourceHandle/targetHandle 제거
+    // sourceHandle: "source",
+    // targetHandle: "target",
+    
+    type: "custom", // ✅ 추가: radial에서 custom edge 사용
+    
     style: {
-      stroke: "#10b981",        // 에메랄드 그린 (성공/활성 상태를 나타냄)
-      strokeDasharray: "5 5",   // 점선 패턴으로 추적임을 명시
-      strokeWidth: 2,           // 일반 케이블과 동일한 굵기
+      stroke: "#10b981",
+      strokeDasharray: "5 5",
+      strokeWidth: 2,
     },
     
-    /** 상세한 연결 정보를 라벨로 표시 */
     label: `${cable.fromDeviceId} to ${cable.toDeviceId}`,
-    
-    /** 
-     * 애니메이션 효과 활성화
-     * 점선이 흐르는 듯한 효과로 데이터 흐름 방향을 시각화
-     */
     animated: true,
     
-    /** 메타데이터 */
     data: {
-      /** 중복 검사용 키 */
       key: `${cable.fromDeviceId}-${cable.toDeviceId}`,
-      
-      /** 추적 케이블임을 표시하는 플래그 */
       isTrace: true,
+      mode: "radial", // ✅ 추가: 모드 정보
     },
   }));
 }

@@ -1,19 +1,7 @@
-// 📁 client/src/utils/CustomEdge.tsx
-
+// CustomEdge.tsx
 import React from "react";
-import { getBezierPath } from "react-flow-renderer";
 import type { EdgeProps } from "react-flow-renderer";
 
-/**
- * CustomEdge Component
- *
- * 네트워크 다이어그램에서 노드 간 연결을 시각화하는 커스텀 엣지 컴포넌트입니다.
- * React Flow의 기본 엣지를 확장하여 네트워크 토폴로지 특성에 맞는
- * 시각적 스타일링과 레이아웃별 차별화된 렌더링을 제공합니다.
- *
- * @component
- * @version 1.1.0
- */
 function CustomEdge({
   id,
   sourceX,
@@ -24,112 +12,66 @@ function CustomEdge({
   data,
   style,
 }: EdgeProps) {
-  console.log("🟣 [CustomEdge] called for edge:", id);
+  // 베지어 곡선을 위한 제어점 계산
+  const curvature = 0.25;
+  const controlX = sourceX + (targetX - sourceX) * curvature;
+  const controlY = sourceY + (targetY - sourceY) * curvature;
 
-  // 좌표 유효성 검사
-  const valid =
-    typeof sourceX === "number" &&
-    typeof sourceY === "number" &&
-    typeof targetX === "number" &&
-    typeof targetY === "number";
+  const edgePath = `M${sourceX},${sourceY} Q${controlX},${controlY} ${targetX},${targetY}`;
 
-  if (!valid) {
-    console.warn("❌ CustomEdge: invalid coordinates", {
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
-    });
-    return null;
-  }
-
-  // SVG path 생성
-  const [edgePath] = getBezierPath({ sourceX, sourceY, targetX, targetY });
-
-  console.log("🧪 getBezierPath result", {
-    id,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    edgePath,
-    isEdgePathValid: edgePath?.startsWith?.("M"),
-  });
-
-  // 🔒 path 유효성 방어 처리
-  if (!edgePath || typeof edgePath !== "string" || !edgePath.startsWith("M")) {
-    console.warn("❌ INVALID SVG PATH, SKIP RENDERING", {
-      id,
-      edgePath,
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
-    });
-    return null;
-  }
-
-  // 🔍 path 유효성 확인
-  const isValidNum = (v: unknown): v is number =>
-    typeof v === "number" && !isNaN(v);
-
-  if (
-    !edgePath ||
-    !edgePath.startsWith("M") ||
-    !isValidNum(sourceX) ||
-    !isValidNum(sourceY) ||
-    !isValidNum(targetX) ||
-    !isValidNum(targetY)
-  ) {
-    console.warn("❌ CustomEdge path malformed", {
-      id,
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
-      edgePath,
-    });
-  }
-
-  console.warn("🎯 CustomEdge path:", {
-    id,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    edgePath,
-  });
-
-  // 레이아웃 모드 판별
   const mode = data?.mode ?? "hierarchical";
+  const isTrace = data?.isTrace ?? false; // 트레이스 엣지인지 확인
 
-  // 스타일 병합 (props.style 우선 적용)
+  // 스타일 설정
   const {
-    stroke = mode === "radial" ? "#fff" : "#000",
-    strokeWidth = mode === "radial" ? 2 : 2.5,
-    strokeDasharray = mode === "radial" ? "4 4" : undefined,
+    stroke = mode === "radial" ? (isTrace ? "#10b981" : "#ffffff") : "#000000",
+    strokeWidth = mode === "radial" ? 1.5 : 2.5,
+    strokeDasharray = isTrace ? "5 5" : undefined,
   } = style ?? {};
 
-console.log("✅ [CustomEdge] rendering path:", {
-    id,
-    stroke,
-    strokeWidth,
-    edgePath,
-  });
+  // strokeWidth를 string으로 변환
 
-  // 최종 SVG path 렌더링
   return (
-    <path
-      id={id}
-      d={edgePath}
-      stroke={stroke}
-      strokeWidth={strokeWidth}
-      strokeDasharray={strokeDasharray}
-      fill="none"
-      markerEnd={markerEnd}
-      cursor="pointer"
-      style={{ zIndex: 1000 }}
-    />
+    <g>
+      {/* 그림자 효과 (radial 모드에서만) */}
+      {mode === "radial" && (
+        <path
+          d={edgePath}
+          stroke="rgba(0, 0, 0, 0.1)"
+          strokeWidth={typeof strokeWidth === "number" ? strokeWidth + 2 : parseFloat(strokeWidth) + 2}
+          fill="none"
+          style={{
+            filter: "blur(2px)",
+          }}
+        />
+      )}
+
+      {/* 실제 경로 */}
+      <path
+        id={id}
+        d={edgePath}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeDasharray={strokeDasharray}
+        fill="none"
+        markerEnd={markerEnd}
+        cursor="pointer"
+        style={{
+          transition: "stroke 0.3s ease, stroke-width 0.3s ease",
+          ...(isTrace && { animation: "dash 20s linear infinite" }),
+        }}
+      />
+
+      {/* 호버 감지용 투명 경로 (더 쉽게 클릭하도록) */}
+      <path
+        d={edgePath}
+        stroke="transparent"
+        strokeWidth={typeof strokeWidth === "number" ? strokeWidth + 10 : parseFloat(strokeWidth) + 10}
+        fill="none"
+        cursor="pointer"
+        pointerEvents="stroke"
+      />
+    </g>
   );
 }
 
