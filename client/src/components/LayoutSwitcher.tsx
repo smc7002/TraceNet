@@ -30,7 +30,7 @@ export default function LayoutSwitcher({ layoutMode, onChange }: Props) {
             : "bg-white text-gray-800"
         }`}
       >
-        마인드맵 보기
+        Radial 보기
       </button>
     </div>
   );
