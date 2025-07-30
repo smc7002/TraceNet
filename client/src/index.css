@@ -10,19 +10,19 @@
 
 .react-flow__node-default {
   width: 120px !important; /* 기본값은 보통 180px 정도 */
-  height: auto;            /* 필요시 고정 */
-  font-size: 0.875rem;     /* 폰트 크기도 조절 가능 */
+  height: auto; /* 필요시 고정 */
+  font-size: 0.875rem; /* 폰트 크기도 조절 가능 */
   padding: 4px 8px;
 }
 .react-flow__node-default .react-flow__node-title {
   font-weight: bold;
   color: #333;
 }
-@keyframes dash {
+@keyframes dash-flow {
   from {
     stroke-dashoffset: 0;
   }
   to {
-    stroke-dashoffset: -100;
+    stroke-dashoffset: -16; /* 10 + 6 = 16 (dash + gap) */
   }
 }

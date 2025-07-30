@@ -1,7 +1,14 @@
 // 📁 client/src/components/CustomNode.tsx
 
 import { memo, useMemo } from "react";
-import { Monitor, Server, Router, Activity, AlertTriangle, Wifi } from "lucide-react";
+import {
+  Monitor,
+  Server,
+  Router,
+  Activity,
+  AlertTriangle,
+  Wifi,
+} from "lucide-react";
 import { Handle, Position } from "react-flow-renderer";
 import type { NodeProps } from "react-flow-renderer";
 
@@ -17,10 +24,13 @@ export interface CustomNodeData {
   showLabel?: boolean;
   ipAddress?: string;
   metadata?: Record<string, unknown>;
+  angleInDegrees?: number; // 추가: 노드의 각도 정보
 }
 
 interface CustomNodeProps extends NodeProps {
   data: CustomNodeData;
+  sourcePosition?: Position; // 추가: layout에서 계산된 position
+  targetPosition?: Position; // 추가: layout에서 계산된 position
 }
 
 const DEVICE_COLORS = {
@@ -49,12 +59,29 @@ const NODE_SIZES = {
   pc: "w-10 h-10",
 } as const;
 
+// 노드 타입별 반지름 (Handle 위치 계산용)
+const NODE_RADIUS = {
+  server: 28, // 56px / 2
+  switch: 24, // 48px / 2
+  router: 24, // 48px / 2
+  pc: 20, // 40px / 2
+} as const;
+
 const HANDLE_STYLE = {
   background: "#6b7280",
   border: "2px solid #ffffff",
   width: 8,
   height: 8,
   borderRadius: "50%",
+};
+
+// Radial 모드에서의 투명 Handle 스타일
+const RADIAL_HANDLE_STYLE = {
+  background: "transparent",
+  border: "none",
+  width: 8,
+  height: 8,
+  pointerEvents: "auto" as const,
 };
 
 const getStatusColor = (status: DeviceStatus): string =>
@@ -112,7 +139,7 @@ const getNodeStyles = (
 
   const hoverEffect = "hover:ring-2 hover:ring-blue-300 hover:scale-105";
   const transition = "transition-all duration-200 ease-in-out";
-  const shadow = selected ? "shadow-lg" : "shadow-sm hover:shadow-md";
+  const shadow = selected ? "drop-shadow-[0_0_3px_white]" : "drop-shadow-[0_0_2px_gray]";
   const bgColor = getStatusBgColor(status);
   const nodeSize = NODE_SIZES[type] || NODE_SIZES.pc;
 
@@ -125,11 +152,64 @@ const getNodeStyles = (
   };
 };
 
-function CustomNode({ data, selected = false }: CustomNodeProps) {
+/**
+ * Radial 모드에서 Handle의 정확한 위치를 계산합니다.
+ * 노드의 원형 경계선에 Handle이 위치하도록 오프셋을 계산합니다.
+ */
+function getRadialHandleOffset(
+  position: Position,
+  nodeType: DeviceType
+): {
+  top?: string;
+  bottom?: string;
+  left?: string;
+  right?: string;
+  transform?: string;
+} {
+  const radius = NODE_RADIUS[nodeType] || NODE_RADIUS.pc;
+
+  switch (position) {
+    case Position.Top:
+      return {
+        top: `-${radius}px`,
+        left: "50%",
+        transform: "translateX(-50%)",
+      };
+    case Position.Bottom:
+      return {
+        bottom: `-${radius}px`,
+        left: "50%",
+        transform: "translateX(-50%)",
+      };
+    case Position.Left:
+      return {
+        left: `-${radius}px`,
+        top: "50%",
+        transform: "translateY(-50%)",
+      };
+    case Position.Right:
+      return {
+        right: `-${radius}px`,
+        top: "50%",
+        transform: "translateY(-50%)",
+      };
+    default:
+      return {};
+  }
+}
+
+function CustomNode({
+  data,
+  selected = false,
+  sourcePosition = Position.Bottom,
+  targetPosition = Position.Top,
+}: CustomNodeProps) {
   const showLabel = data.showLabel ?? true;
   const mode = data.mode || "dagre";
   const type = data.type;
   const status = data.status;
+
+  
 
   const styles = useMemo(
     () => getNodeStyles(selected, status, type),
@@ -139,33 +219,74 @@ function CustomNode({ data, selected = false }: CustomNodeProps) {
   const deviceIcon = useMemo(() => getDeviceIcon(type, status), [type, status]);
   const statusIcon = useMemo(() => getStatusIcon(status), [status]);
 
-  const hiddenStyle = {
-    ...HANDLE_STYLE,
-    opacity: 0,
-    pointerEvents: "none",
-  };
+  // Dagre 모드에서의 Handle 스타일
+  const dagreHandleStyle =
+    mode === "dagre" ? HANDLE_STYLE : RADIAL_HANDLE_STYLE;
+
+  // Radial 모드에서의 Handle 위치 계산
+  const sourceOffset =
+    mode === "radial" ? getRadialHandleOffset(sourcePosition, type) : {};
+  const targetOffset =
+    mode === "radial" ? getRadialHandleOffset(targetPosition, type) : {};
 
   return (
     <div
-      className="flex flex-col items-center relative"
+      className="flex flex-col items-center relative z-10"
       role="button"
       tabIndex={0}
       aria-label={`${type} ${data.label} - ${status}`}
       aria-selected={selected}
     >
-      {/* ✅ 항상 렌더링, 단 radial일 때 숨김 */}
+      {/* Target Handle - 입력 연결점 */}
       <Handle
         type="target"
-        position={Position.Top}
+        position={targetPosition}
         id="target"
-        style={mode === "radial" ? hiddenStyle : HANDLE_STYLE}
+        style={{
+          ...dagreHandleStyle,
+          ...(mode === "radial" && targetOffset),
+        }}
       />
+
+      {/* Source Handle - 출력 연결점 */}
       <Handle
-        type="source"
-        position={Position.Bottom}
-        id="source"
-        style={mode === "radial" ? hiddenStyle : HANDLE_STYLE}
+        type="source" // 또는 "target"
+        position={Position.Bottom} // 실제 방향은 중요치 않음, 중앙 고정이 핵심
+        id="center-handle"
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          ...RADIAL_HANDLE_STYLE,
+        }}
       />
+
+      {/* 서버 노드의 경우 모든 방향에 Handle 추가 (옵션) */}
+      {mode === "radial" && type === "server" && (
+        <>
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => {
+            const rad = (angle * Math.PI) / 180;
+            const offset = 28; // px 기준 거리
+            const isSource = angle < 180;
+            return (
+              <Handle
+                key={`server-${angle}`}
+                type={isSource ? "source" : "target"}
+                position={Position.Bottom}
+                id={`${isSource ? "source" : "target"}-${angle}`}
+                style={{
+                  position: "absolute",
+                  left: `${50 + Math.cos(rad) * offset}px`,
+                  top: `${50 + Math.sin(rad) * offset}px`,
+                  transform: "translate(-50%, -50%)",
+                  ...RADIAL_HANDLE_STYLE,
+                }}
+              />
+            );
+          })}
+        </>
+      )}
 
       <div className={styles.container}>
         {deviceIcon}

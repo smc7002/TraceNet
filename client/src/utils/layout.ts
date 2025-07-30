@@ -15,7 +15,7 @@ import dagre from "dagre";
  * - Radial: 중심 서버를 기준으로 한 방사형 레이아웃
  *
  * @author Network Visualization Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 // --------------------------------------
@@ -37,24 +37,57 @@ export enum LayoutMode {
 }
 
 // --------------------------------------
-// DAGRE 계층 레이아웃 구현
+// 유틸리티 함수
 // --------------------------------------
 
 /**
- * Dagre 알고리즘을 사용하여 계층적 네트워크 레이아웃을 생성합니다.
+ * 각도에 따른 Handle 위치를 계산합니다.
  *
- * 이 함수는 방향성 비순환 그래프(DAG) 구조에 최적화되어 있으며,
- * 네트워크 장비들을 논리적 계층에 따라 좌측에서 우측으로 배치합니다.
+ * 노드가 중심점으로부터 어떤 각도에 위치하는지에 따라
+ * 가장 자연스러운 연결점 위치를 결정합니다.
  *
- * @param nodes - 레이아웃을 적용할 노드 배열
- * @param edges - 노드 간의 연결 관계를 나타내는 엣지 배열
- * @returns 위치가 계산된 노드와 엣지 객체
- *
- * @example
- * ```typescript
- * const { nodes: layoutedNodes, edges } = getDagreLayoutedElements(nodes, edges);
- * ```
+ * @param angleInDegrees - 노드의 각도 (도 단위, 0-360)
+ * @returns source와 target Handle의 위치
  */
+function getHandlePositionsByAngle(angleInDegrees: number): {
+  source: Position;
+  target: Position;
+} {
+  // 각도를 0-360 범위로 정규화
+  const normalizedAngle = ((angleInDegrees % 360) + 360) % 360;
+
+  // 8방향으로 구분하여 최적의 Handle 위치 결정
+  if (normalizedAngle >= 337.5 || normalizedAngle < 22.5) {
+    // 오른쪽 (0도) - 3시 방향
+    return { source: Position.Left, target: Position.Right };
+  } else if (normalizedAngle >= 22.5 && normalizedAngle < 67.5) {
+    // 오른쪽 아래 (45도)
+    return { source: Position.Top, target: Position.Bottom };
+  } else if (normalizedAngle >= 67.5 && normalizedAngle < 112.5) {
+    // 아래 (90도) - 6시 방향
+    return { source: Position.Top, target: Position.Bottom };
+  } else if (normalizedAngle >= 112.5 && normalizedAngle < 157.5) {
+    // 왼쪽 아래 (135도)
+    return { source: Position.Top, target: Position.Bottom };
+  } else if (normalizedAngle >= 157.5 && normalizedAngle < 202.5) {
+    // 왼쪽 (180도) - 9시 방향
+    return { source: Position.Right, target: Position.Left };
+  } else if (normalizedAngle >= 202.5 && normalizedAngle < 247.5) {
+    // 왼쪽 위 (225도)
+    return { source: Position.Bottom, target: Position.Top };
+  } else if (normalizedAngle >= 247.5 && normalizedAngle < 292.5) {
+    // 위 (270도) - 12시 방향
+    return { source: Position.Bottom, target: Position.Top };
+  } else {
+    // 오른쪽 위 (315도)
+    return { source: Position.Bottom, target: Position.Top };
+  }
+}
+
+// --------------------------------------
+// DAGRE 계층 레이아웃 구현
+// --------------------------------------
+
 export function getDagreLayoutedElements(nodes: Node[], edges: Edge[]) {
   // Dagre 그래프 인스턴스 생성 및 기본 설정
   const dagreGraph = new dagre.graphlib.Graph();
@@ -111,35 +144,6 @@ export function getDagreLayoutedElements(nodes: Node[], edges: Edge[]) {
 // 개선된 방사형 레이아웃 구현
 // --------------------------------------
 
-/**
- * 네트워크 인프라에 특화된 방사형 레이아웃을 생성합니다.
- *
- * 이 레이아웃은 다음과 같은 계층 구조를 가정합니다:
- * 1. 중앙의 서버 (Core)
- * 2. 서버 주변의 스위치들 (Distribution Layer)
- * 3. 각 스위치에 연결된 PC들 (Access Layer)
- *
- * 특징:
- * - 서버는 화면 중앙에 고정 배치
- * - 스위치들은 서버를 중심으로 원형 배치
- * - PC들은 해당 스위치 주변에 클러스터링
- * - 연결된 PC 수에 따라 동적으로 반지름 조정
- *
- * @param nodes - 레이아웃을 적용할 노드 배열 (type 필드 필요: 'server', 'switch', 'pc')
- * @param edges - 노드 간의 연결 관계를 나타내는 엣지 배열
- * @returns 위치가 계산된 노드와 엣지 객체
- *
- * @example
- * ```typescript
- * // 노드에는 data.type 필드가 필요합니다
- * const nodes = [
- *   { id: '1', data: { type: 'server', label: 'Main Server' } },
- *   { id: '2', data: { type: 'switch', label: 'SW-01' } },
- *   { id: '3', data: { type: 'pc', label: 'PC-01' } }
- * ];
- * const { nodes: layoutedNodes, edges } = getNewRadialLayoutedElements(nodes, edges);
- * ```
- */
 export function getNewRadialLayoutedElements(
   inputNodes: Node[],
   inputEdges: Edge[]
@@ -160,6 +164,7 @@ export function getNewRadialLayoutedElements(
   const positionedNodesMap = new Map<string, Node>();
 
   // 1. 서버 위치 고정 (중앙)
+  // 서버는 모든 방향에서 연결을 받을 수 있으므로 기본 Handle 위치 유지
   positionedNodesMap.set(server.id, {
     ...server,
     position: {
@@ -168,17 +173,25 @@ export function getNewRadialLayoutedElements(
     },
     sourcePosition: Position.Bottom,
     targetPosition: Position.Top,
-    data: { ...server.data, mode: "radial" },
+    data: {
+      ...server.data,
+      mode: "radial",
+      angleInDegrees: 0, // 서버는 중앙이므로 각도 0
+    },
   });
 
   // 2. 스위치 원형 배치
   const switchRadius = 400;
   const switchAngleStep = (2 * Math.PI) / Math.max(switches.length, 1);
 
-  switches.forEach((sw, i) => {
-    const angle = i * switchAngleStep;
+  switches.forEach((sw, index) => {
+    const angle = index * switchAngleStep;
     const x = center.x + Math.cos(angle) * switchRadius;
     const y = center.y + Math.sin(angle) * switchRadius;
+    const angleInDegrees = (angle * 180) / Math.PI;
+
+    // 각도에 따른 Handle 위치 계산
+    const handlePositions = getHandlePositionsByAngle(angleInDegrees);
 
     positionedNodesMap.set(sw.id, {
       ...sw,
@@ -186,9 +199,14 @@ export function getNewRadialLayoutedElements(
         x: x - NODE_WIDTH / 2,
         y: y - NODE_HEIGHT / 2,
       },
-      sourcePosition: Position.Bottom,
-      targetPosition: Position.Top,
-      data: { ...sw.data, mode: "radial" },
+      sourcePosition: handlePositions.source,
+      targetPosition: handlePositions.target,
+      data: {
+        ...sw.data,
+        mode: "radial",
+        angle: angle, // 각도 저장 (라디안)
+        angleInDegrees: angleInDegrees, // 각도 (도)
+      },
     });
   });
 
@@ -201,10 +219,14 @@ export function getNewRadialLayoutedElements(
       .filter((e) => {
         const isSourceSwitch = e.source === sw.id;
         const isTargetSwitch = e.target === sw.id;
-        const connectedId = isSourceSwitch ? e.target : isTargetSwitch ? e.source : null;
-        
+        const connectedId = isSourceSwitch
+          ? e.target
+          : isTargetSwitch
+          ? e.source
+          : null;
+
         if (!connectedId) return false;
-        
+
         const connectedPC = pcs.find((p) => p.id === connectedId);
         return connectedPC && !pcSet.has(connectedId);
       })
@@ -219,14 +241,22 @@ export function getNewRadialLayoutedElements(
     if (!switchNode || !switchNode.position) return;
 
     const switchPos = switchNode.position;
+    const switchAngle = switchNode.data?.angle || 0; // 스위치의 각도
     const pcRadius = 150 + connectedPCs.length * 5; // 동적 반지름
     const pcAngleStep = (2 * Math.PI) / Math.max(connectedPCs.length, 1);
-    const startAngle = -Math.PI / 2; // 12시 방향부터 시작
+    const startAngle = switchAngle - Math.PI / 2; // 스위치 각도를 기준으로 배치
 
     connectedPCs.forEach((pc, idx) => {
       const angle = startAngle + idx * pcAngleStep;
-      const px = switchPos.x + NODE_WIDTH / 2 + Math.cos(angle) * pcRadius;
-      const py = switchPos.y + NODE_HEIGHT / 2 + Math.sin(angle) * pcRadius;
+      const switchCenterX = switchPos.x + NODE_WIDTH / 2;
+      const switchCenterY = switchPos.y + NODE_HEIGHT / 2;
+
+      const px = switchCenterX + Math.cos(angle) * pcRadius;
+      const py = switchCenterY + Math.sin(angle) * pcRadius;
+      const pcAngleInDegrees = (angle * 180) / Math.PI;
+
+      // PC의 각도에 따른 Handle 위치 계산
+      const handlePositions = getHandlePositionsByAngle(pcAngleInDegrees);
 
       positionedNodesMap.set(pc.id, {
         ...pc,
@@ -234,11 +264,16 @@ export function getNewRadialLayoutedElements(
           x: px - NODE_WIDTH / 2,
           y: py - NODE_HEIGHT / 2,
         },
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
-        data: { ...pc.data, mode: "radial" },
+        sourcePosition: handlePositions.source,
+        targetPosition: handlePositions.target,
+        data: {
+          ...pc.data,
+          mode: "radial",
+          angle: angle,
+          angleInDegrees: pcAngleInDegrees,
+        },
       });
-      
+
       pcSet.add(pc.id);
     });
   });
@@ -246,12 +281,14 @@ export function getNewRadialLayoutedElements(
   // 4. 위치가 계산되지 않은 노드들 처리 (고아 노드)
   inputNodes.forEach((node) => {
     if (!positionedNodesMap.has(node.id)) {
-      console.warn(`⚠️ 노드 ${node.id} (${node.data?.label})의 위치가 계산되지 않았습니다. 기본 위치 할당.`);
-      
+      console.warn(
+        `⚠️ 노드 ${node.id} (${node.data?.label})의 위치가 계산되지 않았습니다. 기본 위치 할당.`
+      );
+
       // 타입별로 다른 기본 위치 할당
       let defaultX = 100;
       let defaultY = 100;
-      
+
       if (node.data?.type === "pc") {
         defaultX = 100;
         defaultY = 100 + (positionedNodesMap.size % 5) * 80;
@@ -265,14 +302,18 @@ export function getNewRadialLayoutedElements(
         position: { x: defaultX, y: defaultY },
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
-        data: { ...node.data, mode: "radial" },
+        data: {
+          ...node.data,
+          mode: "radial",
+          angleInDegrees: 0,
+        },
       });
     }
   });
 
   // 5. 최종 노드 배열 생성 및 검증
   const finalNodes = Array.from(positionedNodesMap.values()).filter((n) => {
-    const valid = 
+    const valid =
       n.position &&
       typeof n.position.x === "number" &&
       typeof n.position.y === "number" &&
@@ -280,11 +321,11 @@ export function getNewRadialLayoutedElements(
       !Number.isNaN(n.position.y) &&
       Number.isFinite(n.position.x) &&
       Number.isFinite(n.position.y);
-    
+
     if (!valid) {
       console.error(`❌ 노드 ${n.id}의 위치가 유효하지 않습니다:`, n.position);
     }
-    
+
     return valid;
   });
 
@@ -298,7 +339,9 @@ export function getNewRadialLayoutedElements(
     },
   }));
 
-  console.log(`📊 Radial 레이아웃 결과: ${finalNodes.length}개 노드, ${finalEdges.length}개 엣지`);
+  console.log(
+    `📊 Radial 레이아웃 결과: ${finalNodes.length}개 노드, ${finalEdges.length}개 엣지`
+  );
 
   return { nodes: finalNodes, edges: finalEdges };
 }
