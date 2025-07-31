@@ -39,7 +39,7 @@ export default function MainPage() {
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [traceResult, setTraceResult] = useState<TraceResponse | null>(null);
   const [selectedCable, setSelectedCable] = useState<CableDto | null>(null);
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(LayoutMode.Dagre);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(LayoutMode.Radial);
   const [traceEdges, setTraceEdges] = useState<Edge[]>([]);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,17 +86,17 @@ export default function MainPage() {
     [allCables, searchQuery]
   );
 
-  const baseEdges = useMemo(() => {
-    const isRadial = layoutMode === LayoutMode.Radial;
-    const base = mapCablesToEdges(allCables, isRadial);
-    return excludeTraceOverlaps(base, traceEdges);
-  }, [allCables, traceEdges, layoutMode]);
+  // const baseEdges = useMemo(() => {
+  //   const isRadial = layoutMode === LayoutMode.Radial;
+  //   const base = mapCablesToEdges(allCables, isRadial);
+  //   return excludeTraceOverlaps(base, traceEdges);
+  // }, [allCables, traceEdges, layoutMode]);
 
-  const allEdges = useMemo(() => {
-    const combined = [...baseEdges, ...traceEdges];
-    console.log("🧪 [All Edges Combined]", combined);
-    return combined;
-  }, [baseEdges, traceEdges]);
+  // const allEdges = useMemo(() => {
+  //   const combined = [...baseEdges, ...traceEdges];
+  //   console.log("🧪 [All Edges Combined]", combined);
+  //   return combined;
+  // }, [baseEdges, traceEdges]);
 
   // 🎯 allNodes 생성 로직 수정
   const allNodes: Node[] = useMemo(() => {
@@ -118,23 +118,41 @@ export default function MainPage() {
 
   // 🎯 레이아웃 적용 useEffect
 
+  // 🎯 baseEdges에서 traceEdges 의존성 제거
+  const pureBaseEdges = useMemo(() => {
+    const isRadial = layoutMode === LayoutMode.Radial;
+    return mapCablesToEdges(allCables, isRadial); // excludeTraceOverlaps 제거
+  }, [allCables, layoutMode]); // traceEdges 의존성 제거
+
+  // 🎯 렌더링용 엣지는 별도로 계산
+  const renderEdges = useMemo(() => {
+    const filteredBase = excludeTraceOverlaps(pureBaseEdges, traceEdges);
+    return [
+      ...filteredBase,
+      ...traceEdges.map((edge) => ({
+        ...edge,
+        id: `trace-${edge.id}`,
+      })),
+    ];
+  }, [pureBaseEdges, traceEdges]);
+
   useEffect(() => {
     console.log("🎯 === 레이아웃 적용 시작 ===");
     console.log("📊 입력 데이터:", {
       layoutMode,
       nodeCount: allNodes.length,
-      edgeCount: allEdges.length,
+      edgeCount: pureBaseEdges.length, // 🔧 수정: pureBaseEdges 사용
     });
 
     // 🔍 입력 데이터 검증
     console.log("🔍 노드 데이터 샘플:", allNodes.slice(0, 3));
-    console.log("🔍 엣지 데이터 샘플:", allEdges.slice(0, 3));
+    console.log("🔍 엣지 데이터 샘플:", pureBaseEdges.slice(0, 3)); // 🔧 수정
 
     // 1️⃣ 기본 레이아웃 계산
     const basicLayout =
       layoutMode === LayoutMode.Radial
-        ? getNewRadialLayoutedElements(allNodes, allEdges)
-        : getDagreLayoutedElements(allNodes, allEdges);
+        ? getNewRadialLayoutedElements(allNodes, pureBaseEdges)
+        : getDagreLayoutedElements(allNodes, pureBaseEdges);
 
     console.log("📐 기본 레이아웃 계산 완료");
 
@@ -193,25 +211,26 @@ export default function MainPage() {
     setLayoutedNodes(finalLayout.nodes);
     setLayoutedEdges(finalLayout.edges);
 
-    // 🔍 검증: 실제로 상태에 저장된 위치 확인
+    // 🔍 검증: 5초 후 실제 렌더링된 위치 확인 (개발용)
     setTimeout(() => {
       console.log("🔍 === 5초 후 실제 렌더링된 노드 위치 확인 ===");
-      const serverNode = document.querySelector('[data-id="83"]'); // SERVER-01의 실제 ID
-      const sw01Node = document.querySelector('[data-id="80"]'); // SW-01의 실제 ID
 
-      if (serverNode) {
-        const rect = serverNode.getBoundingClientRect();
+      const serverElement = document.querySelector('[data-id="83"]');
+      const sw01Element = document.querySelector('[data-id="80"]');
+
+      if (serverElement) {
+        const rect = serverElement.getBoundingClientRect();
         console.log("📍 서버 실제 화면 위치:", { x: rect.x, y: rect.y });
       }
 
-      if (sw01Node) {
-        const rect = sw01Node.getBoundingClientRect();
+      if (sw01Element) {
+        const rect = sw01Element.getBoundingClientRect();
         console.log("📍 SW-01 실제 화면 위치:", { x: rect.x, y: rect.y });
       }
     }, 5000);
 
     console.log("✅ === 전체 레이아웃 처리 완료 ===");
-  }, [layoutMode, allNodes, allEdges]);
+  }, [layoutMode, allNodes, pureBaseEdges]); // 🔧 수정: pureBaseEdges 의존성
 
   useEffect(() => {
     let isMounted = true;
@@ -316,7 +335,7 @@ export default function MainPage() {
           <NetworkDiagram
             key={renderKey}
             nodes={layoutedNodes}
-            edges={layoutedEdges}
+            edges={renderEdges}
             selectedDevice={selectedDevice}
             onDeviceClick={handleDeviceClick}
             onCanvasClick={() => {
