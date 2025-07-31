@@ -28,6 +28,7 @@ import ErrorState from "../components/ErrorState";
 import LayoutSwitcher from "../components/LayoutSwitcher";
 import CustomNode from "../components/CustomNode";
 import CustomEdge from "../utils/CustomEdge";
+import { alignNodesToCalculatedCenters } from "../utils/nodeCenterCalculator";
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
@@ -97,31 +98,119 @@ export default function MainPage() {
     return combined;
   }, [baseEdges, traceEdges]);
 
+  // 🎯 allNodes 생성 로직 수정
   const allNodes: Node[] = useMemo(() => {
     return filteredDevices.map((device) => ({
       id: `${device.deviceId}`,
       type: "custom",
-      position: { x: 0, y: 0 },
+      // ❌ 기존: position: { x: 0, y: 0 },
+      // ✅ 수정: 초기 위치를 제거하고 layout에서만 결정
+      position: { x: 0, y: 0 }, // 임시 위치, layout에서 덮어씀
       data: {
         label: device.name,
         type: device.type.toLowerCase(),
         status: device.status,
         showLabel: true,
+        mode: layoutMode, // 🎯 레이아웃 모드 정보 추가
       },
     }));
-  }, [filteredDevices]);
+  }, [filteredDevices, layoutMode]); // layoutMode도 의존성에 추가
+
+  // 🎯 레이아웃 적용 useEffect
 
   useEffect(() => {
-    const layouted =
+    console.log("🎯 === 레이아웃 적용 시작 ===");
+    console.log("📊 입력 데이터:", {
+      layoutMode,
+      nodeCount: allNodes.length,
+      edgeCount: allEdges.length,
+    });
+
+    // 🔍 입력 데이터 검증
+    console.log("🔍 노드 데이터 샘플:", allNodes.slice(0, 3));
+    console.log("🔍 엣지 데이터 샘플:", allEdges.slice(0, 3));
+
+    // 1️⃣ 기본 레이아웃 계산
+    const basicLayout =
       layoutMode === LayoutMode.Radial
         ? getNewRadialLayoutedElements(allNodes, allEdges)
         : getDagreLayoutedElements(allNodes, allEdges);
 
-    setLayoutedNodes(layouted.nodes);
-    setLayoutedEdges(layouted.edges);
+    console.log("📐 기본 레이아웃 계산 완료");
 
-    console.log("🧩 [Layout 결과 노드]", layouted.nodes);
-    console.log("🧩 [Layout 결과 엣지]", layouted.edges);
+    // 🔍 기본 레이아웃 결과 검증
+    const serverNode = basicLayout.nodes.find((n) => n.data?.type === "server");
+    const switchNodes = basicLayout.nodes.filter(
+      (n) => n.data?.type === "switch"
+    );
+
+    console.log("🔍 기본 레이아웃 결과:");
+    console.log("  서버:", serverNode?.data?.label, serverNode?.position);
+    console.log(
+      "  스위치들:",
+      switchNodes.map((n) => ({
+        label: n.data?.label,
+        id: n.id,
+        position: n.position,
+      }))
+    );
+
+    // 2️⃣ 🎯 노드 중심점으로 정렬
+    console.log("🎯 === 중심점 정렬 시작 ===");
+
+    const finalLayout = alignNodesToCalculatedCenters(
+      basicLayout.nodes,
+      basicLayout.edges
+    );
+
+    console.log("🎯 === 중심점 정렬 완료 ===");
+
+    // 🔍 최종 결과 검증
+    const finalServerNode = finalLayout.nodes.find(
+      (n) => n.data?.type === "server"
+    );
+    const finalSwitchNodes = finalLayout.nodes.filter(
+      (n) => n.data?.type === "switch"
+    );
+
+    console.log("🔍 최종 레이아웃 결과:");
+    console.log(
+      "  서버:",
+      finalServerNode?.data?.label,
+      finalServerNode?.position
+    );
+    console.log(
+      "  스위치들:",
+      finalSwitchNodes.map((n) => ({
+        label: n.data?.label,
+        id: n.id,
+        position: n.position,
+        moved: n.data?.centerAligned,
+      }))
+    );
+
+    // 3️⃣ 상태 업데이트
+    setLayoutedNodes(finalLayout.nodes);
+    setLayoutedEdges(finalLayout.edges);
+
+    // 🔍 검증: 실제로 상태에 저장된 위치 확인
+    setTimeout(() => {
+      console.log("🔍 === 5초 후 실제 렌더링된 노드 위치 확인 ===");
+      const serverNode = document.querySelector('[data-id="83"]'); // SERVER-01의 실제 ID
+      const sw01Node = document.querySelector('[data-id="80"]'); // SW-01의 실제 ID
+
+      if (serverNode) {
+        const rect = serverNode.getBoundingClientRect();
+        console.log("📍 서버 실제 화면 위치:", { x: rect.x, y: rect.y });
+      }
+
+      if (sw01Node) {
+        const rect = sw01Node.getBoundingClientRect();
+        console.log("📍 SW-01 실제 화면 위치:", { x: rect.x, y: rect.y });
+      }
+    }, 5000);
+
+    console.log("✅ === 전체 레이아웃 처리 완료 ===");
   }, [layoutMode, allNodes, allEdges]);
 
   useEffect(() => {
@@ -207,9 +296,15 @@ export default function MainPage() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           statusCounts={{
-            [DeviceStatus.Online]: devices.filter((d) => d.status === DeviceStatus.Online).length,
-            [DeviceStatus.Offline]: devices.filter((d) => d.status === DeviceStatus.Offline).length,
-            [DeviceStatus.Unstable]: devices.filter((d) => d.status === DeviceStatus.Unstable).length,
+            [DeviceStatus.Online]: devices.filter(
+              (d) => d.status === DeviceStatus.Online
+            ).length,
+            [DeviceStatus.Offline]: devices.filter(
+              (d) => d.status === DeviceStatus.Offline
+            ).length,
+            [DeviceStatus.Unstable]: devices.filter(
+              (d) => d.status === DeviceStatus.Unstable
+            ).length,
           }}
         />
       </div>

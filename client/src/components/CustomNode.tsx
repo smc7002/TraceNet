@@ -12,149 +12,402 @@ import {
 import { Handle, Position } from "react-flow-renderer";
 import type { NodeProps } from "react-flow-renderer";
 
+/**
+ * Network Device Custom Node Component
+ * 
+ * 🏭 제조업 네트워크 인프라 관리 시스템의 핵심 시각화 컴포넌트
+ * 
+ * ✨ 핵심 기능:
+ * - 다양한 네트워크 디바이스 타입 지원 (서버, 스위치, PC, 라우터)
+ * - 실시간 상태 모니터링 및 시각적 피드백
+ * - 다중 레이아웃 모드 지원 (Dagre, Radial)
+ * - 동적 Handle 위치 계산을 통한 최적화된 연결점 배치
+ * - 접근성 및 사용자 경험 최적화
+ * 
+ * 🎯 설계 목표:
+ * - 직관적인 네트워크 구조 파악
+ * - 장애 상황 즉시 식별 가능
+ * - 확장 가능한 컴포넌트 아키텍처
+ * - 고성능 렌더링 (React.memo 최적화)
+ * - 일관된 디자인 언어 적용 (Tailwind CSS)
+ */
+
+// ==========================================
+// 📋 타입 정의 및 인터페이스
+// ==========================================
+
+/**
+ * 네트워크 디바이스 상태 열거형
+ * 
+ * 실시간 모니터링 시스템과 연동하여 각 디바이스의 현재 상태를 표현
+ * 
+ * @enum {string}
+ */
 export type DeviceStatus = "online" | "offline" | "unstable";
+
+/**
+ * 지원되는 네트워크 디바이스 타입
+ * 
+ * 제조업 환경에서 일반적으로 사용되는 네트워크 장비 분류
+ * 
+ * @enum {string}
+ */
 export type DeviceType = "server" | "switch" | "pc" | "router";
+
+/**
+ * 레이아웃 모드 타입
+ * 
+ * 네트워크 토폴로지 시각화 방식을 정의
+ * 
+ * @enum {string}
+ */
 export type LayoutMode = "radial" | "dagre" | "hierarchical";
 
+/**
+ * 커스텀 노드 데이터 인터페이스
+ * 
+ * React Flow 노드에 전달되는 모든 필수 및 선택적 데이터를 정의
+ * 실제 네트워크 디바이스의 속성과 시각화 설정을 포함
+ * 
+ * @interface CustomNodeData
+ */
 export interface CustomNodeData {
+  /** 디바이스 타입 - 아이콘 및 스타일 결정 */
   type: DeviceType;
+  
+  /** 실시간 디바이스 상태 - 색상 및 알림 표시 */
   status: DeviceStatus;
+  
+  /** 디바이스 표시명 - 사용자 식별용 */
   label: string;
+  
+  /** 현재 적용된 레이아웃 모드 - Handle 위치 계산용 */
   mode?: LayoutMode;
+  
+  /** 라벨 표시 여부 - UI 밀도 조절용 */
   showLabel?: boolean;
+  
+  /** IP 주소 - 네트워크 식별 및 진단용 */
   ipAddress?: string;
+  
+  /** 확장 메타데이터 - 추후 기능 확장용 */
   metadata?: Record<string, unknown>;
-  angleInDegrees?: number; // 추가: 노드의 각도 정보
+  
+  /** 방사형 레이아웃에서의 각도 정보 - Handle 위치 최적화용 */
+  angleInDegrees?: number;
 }
 
+/**
+ * 커스텀 노드 컴포넌트 Props 인터페이스
+ * 
+ * React Flow NodeProps를 확장하여 커스텀 기능 지원
+ * 
+ * @interface CustomNodeProps
+ * @extends {NodeProps}
+ */
 interface CustomNodeProps extends NodeProps {
+  /** 노드 데이터 객체 */
   data: CustomNodeData;
-  sourcePosition?: Position; // 추가: layout에서 계산된 position
-  targetPosition?: Position; // 추가: layout에서 계산된 position
+  
+  /** 레이아웃 엔진에서 계산된 출력 Handle 위치 */
+  sourcePosition?: Position;
+  
+  /** 레이아웃 엔진에서 계산된 입력 Handle 위치 */
+  targetPosition?: Position;
 }
 
+// ==========================================
+// 🎨 스타일 및 시각적 설정 상수
+// ==========================================
+
+/**
+ * 디바이스 상태별 텍스트 색상 매핑
+ * 
+ * Tailwind CSS 클래스를 사용한 일관된 색상 체계
+ * 접근성을 고려한 충분한 대비율 확보
+ * 
+ * @constant
+ */
 const DEVICE_COLORS = {
-  online: "text-green-500",
-  offline: "text-red-500",
-  unstable: "text-yellow-500",
+  online: "text-green-500",      // 정상: 초록색 (성공)
+  offline: "text-red-500",       // 오프라인: 빨간색 (위험)
+  unstable: "text-yellow-500",   // 불안정: 노란색 (경고)
 } as const;
 
+/**
+ * 디바이스 상태별 배경 색상 매핑
+ * 
+ * 노드 전체의 배경색을 상태에 따라 구분
+ * 미묘한 색조로 과도한 시각적 자극 방지
+ * 
+ * @constant
+ */
 const DEVICE_BG_COLORS = {
-  online: "bg-green-50",
-  offline: "bg-red-50",
-  unstable: "bg-yellow-50",
+  online: "bg-green-50",         // 연한 초록 배경
+  offline: "bg-red-50",          // 연한 빨강 배경
+  unstable: "bg-yellow-50",      // 연한 노랑 배경
 } as const;
 
+/**
+ * 디바이스 타입별 아이콘 크기 설정
+ * 
+ * 디바이스의 중요도와 계층에 따른 시각적 위계 구성
+ * 서버 > 스위치/라우터 > PC 순으로 크기 차등 적용
+ * 
+ * @constant
+ */
 const ICON_SIZES = {
-  server: 28,
-  switch: 24,
-  router: 24,
-  pc: 20,
+  server: 28,    // 서버: 가장 큰 아이콘 (네트워크 중심)
+  switch: 24,    // 스위치: 중간 크기 (중계 장비)
+  router: 24,    // 라우터: 중간 크기 (중계 장비)
+  pc: 20,        // PC: 작은 아이콘 (엔드포인트)
 } as const;
 
+/**
+ * 디바이스 타입별 노드 컨테이너 크기
+ * 
+ * Tailwind CSS 클래스를 사용한 반응형 크기 설정
+ * 아이콘 크기와 비례하여 일관된 시각적 균형 유지
+ * 
+ * @constant
+ */
 const NODE_SIZES = {
-  server: "w-14 h-14",
-  switch: "w-12 h-12",
-  router: "w-12 h-12",
-  pc: "w-10 h-10",
+  server: "w-14 h-14",   // 56px × 56px
+  switch: "w-12 h-12",   // 48px × 48px  
+  router: "w-12 h-12",   // 48px × 48px
+  pc: "w-10 h-10",       // 40px × 40px
 } as const;
 
-// 노드 타입별 반지름 (Handle 위치 계산용)
+/**
+ * Handle 위치 계산용 노드 반지름 값
+ * 
+ * 방사형 레이아웃에서 Handle이 노드 경계선에 정확히 위치하도록
+ * 각 디바이스 타입별 반지름을 픽셀 단위로 정의
+ * 
+ * @constant
+ */
 const NODE_RADIUS = {
-  server: 28, // 56px / 2
-  switch: 24, // 48px / 2
-  router: 24, // 48px / 2
-  pc: 20, // 40px / 2
+  server: 28,    // NODE_SIZES의 절반값 (w-14 = 56px / 2)
+  switch: 24,    // NODE_SIZES의 절반값 (w-12 = 48px / 2)
+  router: 24,    // NODE_SIZES의 절반값 (w-12 = 48px / 2)
+  pc: 20,        // NODE_SIZES의 절반값 (w-10 = 40px / 2)
 } as const;
 
+/**
+ * Dagre 레이아웃용 Handle 스타일
+ * 
+ * 계층형 레이아웃에서 사용되는 명확한 연결점 표시
+ * 시각적 구분을 위한 배경색과 테두리 적용
+ * 
+ * @constant
+ */
 const HANDLE_STYLE = {
-  background: "#6b7280",
-  border: "2px solid #ffffff",
-  width: 8,
+  background: "#6b7280",         // 회색 배경 (neutral-500)
+  border: "2px solid #ffffff",   // 흰색 테두리 (명확한 구분)
+  width: 8,                      // 8px 원형
   height: 8,
-  borderRadius: "50%",
+  borderRadius: "50%",           // 완전한 원형
 };
 
-// Radial 모드에서의 투명 Handle 스타일
+/**
+ * 방사형 레이아웃용 투명 Handle 스타일
+ * 
+ * 방사형 레이아웃에서는 시각적 간소화를 위해 Handle을 숨김
+ * 하지만 기능적으로는 연결 가능하도록 유지
+ * 
+ * @constant
+ */
 const RADIAL_HANDLE_STYLE = {
-  background: "transparent",
-  border: "none",
+  background: "transparent",     // 투명 배경
+  border: "none",                // 테두리 없음
   width: 8,
   height: 8,
-  pointerEvents: "auto" as const,
+  pointerEvents: "auto" as const, // 마우스 이벤트는 활성 유지
 };
 
+// ==========================================
+// 🎨 스타일링 유틸리티 함수들
+// ==========================================
+
+/**
+ * 디바이스 상태에 따른 텍스트 색상 클래스 반환
+ * 
+ * @param status - 디바이스 상태
+ * @returns Tailwind CSS 텍스트 색상 클래스
+ */
 const getStatusColor = (status: DeviceStatus): string =>
   DEVICE_COLORS[status] || "text-gray-400";
 
+/**
+ * 디바이스 상태에 따른 배경 색상 클래스 반환
+ * 
+ * @param status - 디바이스 상태  
+ * @returns Tailwind CSS 배경 색상 클래스
+ */
 const getStatusBgColor = (status: DeviceStatus): string =>
   DEVICE_BG_COLORS[status] || "bg-gray-50";
 
+/**
+ * 디바이스 타입별 아이콘 컴포넌트 생성 함수
+ * 
+ * 🎯 기능:
+ * - 디바이스 타입에 따른 적절한 Lucide 아이콘 선택
+ * - 상태별 색상 자동 적용
+ * - 접근성을 위한 aria-hidden 속성 설정
+ * - 타입별 최적화된 아이콘 크기 적용
+ * 
+ * @param type - 디바이스 타입
+ * @param status - 디바이스 상태
+ * @returns 스타일이 적용된 React 아이콘 컴포넌트
+ * 
+ * @example
+ * ```tsx
+ * const serverIcon = getDeviceIcon('server', 'online');
+ * // Returns: <Server size={28} className="text-green-500" aria-hidden />
+ * ```
+ */
 const getDeviceIcon = (type: DeviceType, status: DeviceStatus) => {
   const colorClass = getStatusColor(status);
   const size = ICON_SIZES[type] || ICON_SIZES.pc;
 
+  // 모든 아이콘에 공통 적용될 props
   const iconProps = {
     size,
     className: colorClass,
-    "aria-hidden": true,
+    "aria-hidden": true,         // 스크린 리더에서 숨김 (장식용)
   };
 
+  // 디바이스 타입별 아이콘 매핑
   switch (type) {
     case "server":
       return <Server {...iconProps} />;
+      
     case "switch":
       return <Router {...iconProps} />;
+      
     case "router":
       return <Wifi {...iconProps} />;
+      
     case "pc":
     default:
       return <Monitor {...iconProps} />;
   }
 };
 
+/**
+ * 디바이스 상태별 상태 표시 아이콘 생성 함수
+ * 
+ * 🎯 기능:
+ * - 상태별 직관적인 시각적 피드백 제공
+ * - 소형 아이콘으로 공간 효율성 확보
+ * - 일관된 디자인 시스템 적용
+ * 
+ * @param status - 디바이스 상태
+ * @returns 상태를 나타내는 React 컴포넌트
+ * 
+ * @example
+ * ```tsx
+ * const onlineStatus = getStatusIcon('online');
+ * // Returns: <Activity size={12} className="text-green-500" />
+ * ```
+ */
 const getStatusIcon = (status: DeviceStatus) => {
   const props = { size: 12, className: getStatusColor(status) };
 
   switch (status) {
     case "online":
+      // 활동 상태: Activity 아이콘 (파형 모양)
       return <Activity {...props} />;
+      
     case "unstable":
+      // 불안정 상태: 경고 삼각형
       return <AlertTriangle {...props} />;
+      
     case "offline":
+      // 오프라인 상태: 단순한 빨간 점
       return <div className="w-3 h-3 rounded-full bg-red-500" />;
+      
     default:
       return null;
   }
 };
 
+/**
+ * 노드 컨테이너의 동적 스타일 클래스 생성 함수
+ * 
+ * 🎯 기능:
+ * - 선택 상태에 따른 시각적 피드백
+ * - 상태별 배경색 및 테두리 설정
+ * - 호버 효과 및 트랜지션 애니메이션
+ * - 그림자 및 크기 조절 효과
+ * 
+ * 🎨 시각적 효과:
+ * - 선택 시: 황금색 링 + 그림자 강화
+ * - 호버 시: 파란색 링 + 약간 확대
+ * - 부드러운 트랜지션으로 자연스러운 UX
+ * 
+ * @param selected - 노드 선택 상태
+ * @param status - 디바이스 상태
+ * @param type - 디바이스 타입
+ * @returns 스타일 클래스 객체
+ */
 const getNodeStyles = (
   selected: boolean,
   status: DeviceStatus,
   type: DeviceType
 ) => {
+  // 🔲 선택 상태별 링 스타일
   const baseRing = selected
-    ? "ring-2 ring-amber-400 ring-offset-2"
-    : "ring-1 ring-slate-200";
+    ? "ring-2 ring-amber-400 ring-offset-2"    // 선택됨: 황금색 링
+    : "ring-1 ring-slate-200";                 // 기본: 회색 링
 
+  // ✨ 인터랙션 효과
   const hoverEffect = "hover:ring-2 hover:ring-blue-300 hover:scale-105";
   const transition = "transition-all duration-200 ease-in-out";
-  const shadow = selected ? "drop-shadow-[0_0_3px_white]" : "drop-shadow-[0_0_2px_gray]";
+  
+  // 🌟 그림자 효과
+  const shadow = selected
+    ? "drop-shadow-[0_0_3px_white]"           // 선택 시: 강한 흰색 그림자
+    : "drop-shadow-[0_0_2px_gray]";           // 기본: 부드러운 회색 그림자
+    
+  // 🎨 배경 및 크기 설정
   const bgColor = getStatusBgColor(status);
   const nodeSize = NODE_SIZES[type] || NODE_SIZES.pc;
 
   return {
+    // 메인 노드 컨테이너 스타일
     container: `${nodeSize} rounded-full ${bgColor} border-2 border-white ${baseRing} ${shadow} ${hoverEffect} ${transition} flex items-center justify-center cursor-pointer relative`,
-    label:
-      "mt-2 text-xs text-gray-700 font-medium text-center max-w-20 truncate",
-    statusBadge:
-      "absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm",
+    
+    // 노드 라벨 스타일
+    label: "mt-2 text-xs text-gray-700 font-medium text-center max-w-20 truncate",
+    
+    // 상태 배지 스타일 (우상단 작은 원)
+    statusBadge: "absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm",
   };
 };
 
 /**
- * Radial 모드에서 Handle의 정확한 위치를 계산합니다.
- * 노드의 원형 경계선에 Handle이 위치하도록 오프셋을 계산합니다.
+ * 방사형 레이아웃에서 Handle의 정확한 위치 계산 함수
+ * 
+ * 🧮 수학적 계산:
+ * - 노드의 원형 경계선에 Handle을 정확히 위치시킴
+ * - 각 방향별로 적절한 오프셋 값 계산
+ * - CSS transform을 활용한 중심점 정렬
+ * 
+ * 🎯 목적:
+ * - 연결선이 노드 중심에서 시작하는 것처럼 보이게 함
+ * - 시각적으로 자연스러운 연결점 제공
+ * - 다양한 노드 크기에 대응하는 동적 계산
+ * 
+ * @param position - Handle의 방향 (Top, Bottom, Left, Right)
+ * @param nodeType - 노드 타입 (크기 계산용)
+ * @returns CSS 스타일 객체 (위치 및 변환 속성)
+ * 
+ * @example
+ * ```tsx
+ * const offset = getRadialHandleOffset(Position.Top, 'server');
+ * // Returns: { top: '-28px', left: '50%', transform: 'translateX(-50%)' }
+ * ```
  */
 function getRadialHandleOffset(
   position: Position,
@@ -166,64 +419,120 @@ function getRadialHandleOffset(
   right?: string;
   transform?: string;
 } {
+  // 노드 타입별 반지름 조회
   const radius = NODE_RADIUS[nodeType] || NODE_RADIUS.pc;
 
   switch (position) {
     case Position.Top:
+      // 🔝 상단 Handle: 노드 위쪽 경계에 중앙 정렬
       return {
         top: `-${radius}px`,
         left: "50%",
         transform: "translateX(-50%)",
       };
+      
     case Position.Bottom:
+      // 🔻 하단 Handle: 노드 아래쪽 경계에 중앙 정렬
       return {
         bottom: `-${radius}px`,
         left: "50%",
         transform: "translateX(-50%)",
       };
+      
     case Position.Left:
+      // ◀️ 좌측 Handle: 노드 왼쪽 경계에 중앙 정렬
       return {
         left: `-${radius}px`,
         top: "50%",
         transform: "translateY(-50%)",
       };
+      
     case Position.Right:
+      // ▶️ 우측 Handle: 노드 오른쪽 경계에 중앙 정렬
       return {
         right: `-${radius}px`,
         top: "50%",
         transform: "translateY(-50%)",
       };
+      
     default:
+      // 기본값: 위치 지정 없음
       return {};
   }
 }
 
+// ==========================================
+// 🎯 메인 컴포넌트 구현부
+// ==========================================
+
+/**
+ * 커스텀 네트워크 노드 컴포넌트
+ * 
+ * 🏗️ 아키텍처 특징:
+ * - React.memo를 통한 렌더링 최적화
+ * - useMemo를 활용한 계산 결과 캐싱
+ * - 접근성 표준 준수 (ARIA 속성)
+ * - 반응형 디자인 지원
+ * 
+ * 🔧 핵심 기능:
+ * - 다중 레이아웃 모드 지원 (Dagre/Radial)
+ * - 동적 Handle 위치 계산
+ * - 실시간 상태 반영
+ * - 키보드 네비게이션 지원
+ * 
+ * 🎨 시각적 특징:
+ * - 상태별 색상 구분
+ * - 부드러운 애니메이션 효과
+ * - 직관적인 아이콘 시스템
+ * - 일관된 디자인 언어
+ * 
+ * @param props - 컴포넌트 Props
+ * @returns JSX.Element - 렌더링된 노드 컴포넌트
+ * 
+ * @example
+ * ```tsx
+ * <CustomNode
+ *   data={{
+ *     type: 'server',
+ *     status: 'online',
+ *     label: 'Main-Server-01',
+ *     ipAddress: '192.168.1.1',
+ *     mode: 'radial'
+ *   }}
+ *   selected={false}
+ *   sourcePosition={Position.Bottom}
+ *   targetPosition={Position.Top}
+ * />
+ * ```
+ */
 function CustomNode({
   data,
   selected = false,
   sourcePosition = Position.Bottom,
   targetPosition = Position.Top,
 }: CustomNodeProps) {
+  
+  // ⚙️ 컴포넌트 설정 추출
   const showLabel = data.showLabel ?? true;
   const mode = data.mode || "dagre";
   const type = data.type;
   const status = data.status;
 
-  
-
+  // 🎨 스타일 객체 메모이제이션 (리렌더링 최적화)
   const styles = useMemo(
     () => getNodeStyles(selected, status, type),
     [selected, status, type]
   );
 
+  // 🖼️ 아이콘 컴포넌트 메모이제이션
   const deviceIcon = useMemo(() => getDeviceIcon(type, status), [type, status]);
   const statusIcon = useMemo(() => getStatusIcon(status), [status]);
 
-  // Dagre 모드에서의 Handle 스타일
+  // 🔌 레이아웃 모드별 Handle 스타일 결정
   const dagreHandleStyle =
     mode === "dagre" ? HANDLE_STYLE : RADIAL_HANDLE_STYLE;
 
-  // Radial 모드에서의 Handle 위치 계산
+  // 📍 방사형 레이아웃용 Handle 위치 계산
   const sourceOffset =
     mode === "radial" ? getRadialHandleOffset(sourcePosition, type) : {};
   const targetOffset =
@@ -237,7 +546,8 @@ function CustomNode({
       aria-label={`${type} ${data.label} - ${status}`}
       aria-selected={selected}
     >
-      {/* Target Handle - 입력 연결점 */}
+      {/* 🎯 Target Handle - 입력 연결점 */}
+      {/* 다른 노드로부터 연결을 받는 지점 */}
       <Handle
         type="target"
         position={targetPosition}
@@ -248,10 +558,11 @@ function CustomNode({
         }}
       />
 
-      {/* Source Handle - 출력 연결점 */}
+      {/* 🎯 Central Handle - 중앙 연결점 (방사형 전용) */}
+      {/* 방사형 레이아웃에서 모든 연결이 노드 중앙을 통과하도록 함 */}
       <Handle
-        type="source" // 또는 "target"
-        position={Position.Bottom} // 실제 방향은 중요치 않음, 중앙 고정이 핵심
+        type="source"
+        position={Position.Bottom}  // 실제 방향은 무관, 중앙 고정이 핵심
         id="center-handle"
         style={{
           position: "absolute",
@@ -262,13 +573,16 @@ function CustomNode({
         }}
       />
 
-      {/* 서버 노드의 경우 모든 방향에 Handle 추가 (옵션) */}
+      {/* 🌟 Server Node Special Handles (방사형 모드 전용) */}
+      {/* 서버 노드의 경우 모든 방향에서 연결 가능하도록 8방향 Handle 생성 */}
       {mode === "radial" && type === "server" && (
         <>
           {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => {
+            // 🧮 극좌표 계산: 각도를 라디안으로 변환
             const rad = (angle * Math.PI) / 180;
-            const offset = 28; // px 기준 거리
-            const isSource = angle < 180;
+            const offset = 28; // 서버 노드 반지름
+            const isSource = angle < 180; // 상반부는 source, 하반부는 target
+            
             return (
               <Handle
                 key={`server-${angle}`}
@@ -277,6 +591,7 @@ function CustomNode({
                 id={`${isSource ? "source" : "target"}-${angle}`}
                 style={{
                   position: "absolute",
+                  // 🧮 원형 배치: 중심점에서 offset 거리만큼 떨어진 위치
                   left: `${50 + Math.cos(rad) * offset}px`,
                   top: `${50 + Math.sin(rad) * offset}px`,
                   transform: "translate(-50%, -50%)",
@@ -288,17 +603,23 @@ function CustomNode({
         </>
       )}
 
+      {/* 🏠 노드 메인 컨테이너 */}
       <div className={styles.container}>
+        {/* 📱 디바이스 타입 아이콘 */}
         {deviceIcon}
+
+        {/* 🔴 상태 표시 배지 (우상단) */}
         <div className={styles.statusBadge}>{statusIcon}</div>
       </div>
 
+      {/* 🏷️ 노드 라벨 표시 */}
       {showLabel && (
         <div className={styles.label} title={data.label}>
           {data.label}
         </div>
       )}
 
+      {/* 🌐 IP 주소 표시 (옵션) */}
       {showLabel && data.ipAddress && (
         <div className="text-xs text-gray-500 font-mono mt-1">
           {data.ipAddress}
@@ -308,4 +629,6 @@ function CustomNode({
   );
 }
 
+// 🚀 성능 최적화: React.memo로 불필요한 리렌더링 방지
+// Props가 변경되지 않으면 컴포넌트를 재사용하여 렌더링 성능 향상
 export default memo(CustomNode);
