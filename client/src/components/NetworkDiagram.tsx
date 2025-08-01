@@ -181,8 +181,8 @@ export default function NetworkDiagram({
         
         // 🎯 뷰포트 설정
         fitView={false}
-        defaultZoom={0.8}
-        defaultPosition={[50, 50]}
+        defaultZoom={1.0}
+        defaultPosition={[0, 0]}
         translateExtent={[
           [-2000, -2000],
           [3000, 2000]

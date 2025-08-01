@@ -270,10 +270,10 @@ export function updateNodesWithCenters(
 
   // 🎯 노드 크기 정의 (React Flow 렌더링용)
   const NODE_SIZES = {
-    server: { width: 56, height: 56 }, // w-14 h-14
-    switch: { width: 48, height: 48 }, // w-12 h-12
-    router: { width: 48, height: 48 }, // w-12 h-12
-    pc: { width: 40, height: 40 }, // w-10 h-10
+    server: { width: 58, height: 80 }, // 180x60 → 58x80
+    switch: { width: 48, height: 72 }, // 180x60 → 48x72
+    router: { width: 48, height: 72 },
+    pc: { width: 48, height: 72 },
   };
 
   const updatedNodes = nodes.map((node) => {

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // 📁 src/pages/MainPage.tsx
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -213,19 +214,59 @@ export default function MainPage() {
 
     // 🔍 검증: 5초 후 실제 렌더링된 위치 확인 (개발용)
     setTimeout(() => {
-      console.log("🔍 === 5초 후 실제 렌더링된 노드 위치 확인 ===");
+      console.log("🔍 === 5초 후 React Flow 내부 좌표 확인 ===");
 
-      const serverElement = document.querySelector('[data-id="83"]');
-      const sw01Element = document.querySelector('[data-id="80"]');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const reactFlowInstance = (window as any).reactFlowInstance;
 
-      if (serverElement) {
-        const rect = serverElement.getBoundingClientRect();
-        console.log("📍 서버 실제 화면 위치:", { x: rect.x, y: rect.y });
-      }
+      if (reactFlowInstance) {
+        // React Flow에서 직접 노드 정보 가져오기
+        const serverFlowNode = reactFlowInstance.getNode("83");
+        const sw01FlowNode = reactFlowInstance.getNode("80");
 
-      if (sw01Element) {
-        const rect = sw01Element.getBoundingClientRect();
-        console.log("📍 SW-01 실제 화면 위치:", { x: rect.x, y: rect.y });
+        console.log("📍 서버 Flow 노드 전체:", serverFlowNode);
+        console.log("📍 SW-01 Flow 노드 전체:", sw01FlowNode);
+
+        // 노드 ID 목록 확인
+        const allFlowNodes = reactFlowInstance.getNodes();
+        console.log(
+          "📍 모든 Flow 노드 ID들:",
+          allFlowNodes.map((n) => n.id)
+        );
+
+        // 노드 타입별 실제 크기 확인
+        const serverNode = allFlowNodes.find((n: any) => n.data?.type === "server");
+        const switchNode = allFlowNodes.find((n: any) => n.data?.type === "switch");
+        const pcNode = allFlowNodes.find((n: any) => n.data?.type === "pc");
+
+        console.log("📏 실제 노드 크기들:");
+        console.log("서버:", serverNode?.width, "x", serverNode?.height);
+        console.log("스위치:", switchNode?.width, "x", switchNode?.height);
+        console.log("PC:", pcNode?.width, "x", pcNode?.height);
+
+        // 실제 DOM 위치도 함께 확인
+        const serverElement = document.querySelector('[data-id="83"]');
+        const sw01Element = document.querySelector('[data-id="80"]');
+
+        if (serverElement && sw01Element) {
+          const containerElement = document.querySelector(".react-flow");
+          const containerRect = containerElement?.getBoundingClientRect();
+
+          const serverRect = serverElement.getBoundingClientRect();
+          const sw01Rect = sw01Element.getBoundingClientRect();
+
+          // 컨테이너 기준 상대 좌표 계산
+          if (containerRect) {
+            console.log("📍 서버 컨테이너 기준 위치:", {
+              x: serverRect.x - containerRect.x,
+              y: serverRect.y - containerRect.y,
+            });
+            console.log("📍 SW-01 컨테이너 기준 위치:", {
+              x: sw01Rect.x - containerRect.x,
+              y: sw01Rect.y - containerRect.y,
+            });
+          }
+        }
       }
     }, 5000);
 
