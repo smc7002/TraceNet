@@ -35,6 +35,7 @@ builder.Services.AddScoped<CableService>();
 builder.Services.AddScoped<DeviceService>();
 builder.Services.AddScoped<PortService>();
 builder.Services.AddScoped<TraceService>();
+builder.Services.AddScoped<PingService>();
 
 // 🌐 Add CORS policy to allow requests from frontend
 builder.Services.AddCors(options =>

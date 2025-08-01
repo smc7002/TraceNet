@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TraceNet.Data;
 using TraceNet.Models;
 using TraceNet.DTOs;
+using TraceNet.Services;
 
 namespace TraceNet.Services
 {
@@ -13,11 +14,13 @@ namespace TraceNet.Services
     {
         private readonly TraceNetDbContext _context;
         private readonly ILogger<TraceService> _logger;
+        private readonly PingService _pingService;
 
-        public TraceService(TraceNetDbContext context, ILogger<TraceService> logger)
+        public TraceService(TraceNetDbContext context, ILogger<TraceService> logger, PingService pingService)
         {
             _context = context;
             _logger = logger;
+            _pingService = pingService;
         }
 
         /// <summary>
@@ -76,7 +79,6 @@ namespace TraceNet.Services
             }
         }
 
-
         /// <summary>
         /// 연결된 장비들의 네트워크 데이터를 사전에 로딩합니다.
         /// BFS 방식으로 maxDepth 깊이까지의 연결된 장비들을 한 번에 로딩
@@ -111,7 +113,6 @@ namespace TraceNet.Services
 
             return devices;
         }
-
 
         /// <summary>
         /// BFS를 사용하여 연결된 장비 ID들을 수집합니다. (EF Core LINQ 대신 메모리 기반)
@@ -150,9 +151,6 @@ namespace TraceNet.Services
             return visited;
         }
 
-
-
-
         /// <summary>
         /// 동기 DFS를 사용하여 서버까지의 경로를 탐색합니다.
         /// </summary>
@@ -178,7 +176,6 @@ namespace TraceNet.Services
                     Path = path,
                     Cables = uniqueCables
                 };
-
             }
 
             return new TraceResultDto { Success = false };
@@ -275,5 +272,108 @@ namespace TraceNet.Services
             return result;
         }
 
+        /// <summary>
+        /// TracePath 상의 모든 장비 Ping 실행
+        /// </summary>
+        public async Task<TracePingResultDto> PingTracePathAsync(int startDeviceId)
+        {
+            _logger.LogInformation("TracePath Ping 시작: StartDeviceId={StartDeviceId}", startDeviceId);
+
+            try
+            {
+                // 1. 먼저 경로 추적
+                var traceResult = await TracePathAsync(startDeviceId);
+
+                if (!traceResult.Success)
+                {
+                    return new TracePingResultDto
+                    {
+                        Success = false,
+                        ErrorMessage = "경로를 찾을 수 없습니다."
+                    };
+                }
+
+                // 2. 경로상 모든 장비 ID 수집
+                var deviceIds = new HashSet<int> { startDeviceId };
+                foreach (var step in traceResult.Path)
+                {
+                    deviceIds.Add(step.FromDeviceId);
+                    deviceIds.Add(step.ToDeviceId);
+                }
+
+                // 3. 각 장비에 대해 Ping 실행
+                var pingResults = new List<PingResultDto>();
+                var devices = await _context.Devices
+                    .Where(d => deviceIds.Contains(d.DeviceId))
+                    .ToListAsync();
+
+                foreach (var device in devices)
+                {
+                    var pingResult = await PingDeviceInternalAsync(device);
+                    pingResults.Add(pingResult);
+                }
+
+                var onlineCount = pingResults.Count(p => p.Status == "Online");
+                var offlineCount = pingResults.Count(p => p.Status == "Offline");
+                var unstableCount = pingResults.Count(p => p.Status == "Unstable");
+
+                return new TracePingResultDto
+                {
+                    Success = true,
+                    TracePath = traceResult,
+                    PingResults = pingResults,
+                    TotalDevices = deviceIds.Count,
+                    OnlineDevices = onlineCount,
+                    OfflineDevices = offlineCount,
+                    UnstableDevices = unstableCount,
+                    CheckedAt = DateTime.UtcNow
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "TracePath Ping 실패: StartDeviceId={StartDeviceId}", startDeviceId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 단일 장비 Ping 실행 (내부용)
+        /// </summary>
+        private async Task<PingResultDto> PingDeviceInternalAsync(Device device)
+        {
+            if (string.IsNullOrEmpty(device.IPAddress))
+            {
+                return new PingResultDto
+                {
+                    DeviceId = device.DeviceId,
+                    DeviceName = device.Name,
+                    IpAddress = "",
+                    Status = "Unknown",
+                    CheckedAt = DateTime.UtcNow,
+                    ErrorMessage = "IP 주소가 설정되지 않음"
+                };
+            }
+
+            // PingService 호출
+            var pingResult = await _pingService.PingAsync(device.IPAddress);
+
+            // Device 상태 업데이트
+            device.Status = pingResult.Status;
+            device.LatencyMs = pingResult.LatencyMs;
+            device.LastCheckedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return new PingResultDto
+            {
+                DeviceId = device.DeviceId,
+                DeviceName = device.Name,
+                IpAddress = device.IPAddress,
+                Status = pingResult.Status,
+                LatencyMs = pingResult.LatencyMs,
+                CheckedAt = DateTime.UtcNow,
+                ErrorMessage = pingResult.ErrorMessage
+            };
+        }
     }
 }

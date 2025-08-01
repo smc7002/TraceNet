@@ -71,5 +71,90 @@ namespace TraceNet.Controllers
 
             return NoContent();
         }
+
+        // DeviceController.cs에 추가할 엔드포인트들
+
+        /// <summary>
+        /// 🏓 단일 장비 Ping 실행
+        /// POST: api/device/{id}/ping
+        /// </summary>
+        [HttpPost("{id}/ping")]
+        public async Task<ActionResult<PingResultDto>> PingDevice(int id, [FromQuery] int timeout = 2000)
+        {
+            try
+            {
+                var result = await _deviceService.PingDeviceAsync(id, timeout);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                throw new ApplicationException("장비 Ping 중 오류 발생", ex);
+            }
+        }
+
+        /// <summary>
+        /// 🏓 여러 장비 일괄 Ping 실행  
+        /// POST: api/device/ping/multi
+        /// </summary>
+        [HttpPost("ping/multi")]
+        public async Task<ActionResult<IEnumerable<PingResultDto>>> PingMultipleDevices([FromBody] MultiPingRequestDto dto)
+        {
+            try
+            {
+                var results = await _deviceService.PingMultipleDevicesAsync(dto.DeviceIds, dto.TimeoutMs);
+                return Ok(results ?? new List<PingResultDto>());
+            }
+            catch (Exception ex)
+            {
+                throw new ApplicationException("일괄 Ping 중 오류 발생", ex);
+            }
+        }
+
+        /// <summary>
+        /// 📥 장비 상태 조회 (Ping 결과 포함)
+        /// GET: api/device/{id}/status
+        /// </summary>
+        [HttpGet("{id}/status")]
+        public async Task<ActionResult<DeviceDto>> GetDeviceStatus(int id)
+        {
+            try
+            {
+                var device = await _deviceService.GetWithStatusAsync(id);
+                if (device == null)
+                    return NotFound(new { message = $"장비 ID {id}를 찾을 수 없습니다." });
+
+                return Ok(device);
+            }
+            catch (Exception ex)
+            {
+                throw new ApplicationException("장비 상태 조회 중 오류 발생", ex);
+            }
+        }
+
+        /// <summary>
+        /// 🏓 모든 장비 Ping 실행
+        /// POST: api/device/ping/all
+        /// </summary>
+        [HttpPost("ping/all")]
+        public async Task<ActionResult<IEnumerable<PingResultDto>>> PingAllDevices([FromQuery] int timeout = 2000)
+        {
+            try
+            {
+                // 모든 장비 ID 조회
+                var allDevices = await _deviceService.GetAllAsync();
+                var deviceIds = allDevices.Select(d => d.DeviceId).ToList();
+
+                var results = await _deviceService.PingMultipleDevicesAsync(deviceIds, timeout);
+                return Ok(results);
+            }
+            catch (Exception ex)
+            {
+                throw new ApplicationException("전체 장비 Ping 중 오류 발생", ex);
+            }
+        }
     }
 }

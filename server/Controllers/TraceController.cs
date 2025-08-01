@@ -13,10 +13,12 @@ namespace TraceNet.Controllers
     public class TraceController : ControllerBase
     {
         private readonly TraceService _traceService;
+        private readonly DeviceService _deviceService;
 
-        public TraceController(TraceService traceService)
+        public TraceController(TraceService traceService, DeviceService deviceService)
         {
             _traceService = traceService;
+            _deviceService = deviceService;
         }
 
         /// <summary>
@@ -55,6 +57,40 @@ namespace TraceNet.Controllers
                 // 기타 예상치 못한 오류 → 전역 미들웨어로 위임 가능
                 Console.WriteLine($"[❌ TraceController 오류] {ex.Message}");
                 return StatusCode(500, new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 🏓 TracePath 상의 모든 장비 Ping 실행
+        /// GET: api/trace/{deviceId}/ping
+        /// </summary>
+        [HttpGet("{deviceId}/ping")]
+        public async Task<ActionResult<TracePingResultDto>> PingTracePath(int deviceId)
+        {
+            Console.WriteLine($"[🏓 TraceController] TracePath Ping 호출 - deviceId: {deviceId}");
+
+            try
+            {
+                // TraceService의 PingTracePathAsync 호출 (기존 로직 재사용)
+                var result = await _traceService.PingTracePathAsync(deviceId);
+                
+                if (!result.Success)
+                {
+                    return NotFound(new { message = result.ErrorMessage ?? "TracePath Ping 실행 실패" });
+                }
+                
+                Console.WriteLine($"[🏓 TraceController] Ping 완료 - 총 {result.TotalDevices}개, 온라인 {result.OnlineDevices}개");
+                
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[❌ TracePath Ping 오류] {ex.Message}");
+                return StatusCode(500, new { message = "TracePath Ping 중 오류 발생" });
             }
         }
     }
