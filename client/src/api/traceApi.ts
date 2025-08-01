@@ -1,6 +1,6 @@
 // 📁 src/api/traceApi.ts
 import axios from "axios";
-import type { TraceResponse } from "../types/trace"; // ✅ 여기 중요!
+import type { TraceResponse } from "../types/trace";
 
 /**
  * 특정 장비의 Trace 경로를 조회합니다.

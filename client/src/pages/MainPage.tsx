@@ -4,9 +4,11 @@ import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { fetchDevices } from "../api/deviceApi";
 import { fetchTrace } from "../api/traceApi";
 import { fetchCables } from "../api/cableApi";
+import { pingAllDevices } from "../api/pingApi"; // 🆕 Ping API 추가
 import type { Device } from "../types/device";
 import type { TraceResponse } from "../types/trace";
 import type { CableDto } from "../types/cable";
+//import type { PingResultDto } from "../types/ping";
 import { DeviceStatus } from "../types/status";
 import {
   LayoutMode,
@@ -47,10 +49,14 @@ const MainPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [renderKey, setRenderKey] = useState(0);
+  
+  // 🆕 Ping 관련 상태 추가
+  const [isPinging, setIsPinging] = useState(false);
+  const [pingError, setPingError] = useState<string | null>(null);
+  
   const traceTimestampRef = useRef<number>(0);
 
   const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
-  //onst [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
 
   const resetSelections = useCallback(() => {
     setSelectedDevice(null);
@@ -168,6 +174,46 @@ const MainPage = () => {
     };
   }, []);
 
+  // 🆕 전체 Ping 실행 함수
+  const handlePingAll = useCallback(async () => {
+    if (isPinging) return; // 중복 실행 방지
+    
+    setIsPinging(true);
+    setPingError(null);
+    
+    try {
+      console.log("🚀 전체 Ping 시작...");
+      const pingResults = await pingAllDevices();
+      
+      // 🎯 기존 devices 상태를 Ping 결과로 업데이트
+      setDevices(prevDevices => {
+        return prevDevices.map(device => {
+          const pingResult = pingResults.find(p => p.deviceId === device.deviceId);
+          if (pingResult) {
+            return {
+              ...device,
+              status: pingResult.status as Device['status'], // 타입 안전성 확보
+              lastCheckedAt: pingResult.checkedAt,
+            };
+          }
+          return device;
+        });
+      });
+      
+      // 성공 메시지 표시 (선택적)
+      const online = pingResults.filter(r => r.status === "Online").length;
+      const total = pingResults.length;
+      console.log(`✅ 전체 Ping 완료: ${online}/${total}개 온라인`);
+      
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "전체 Ping 중 오류가 발생했습니다.";
+      setPingError(message);
+      console.error("❌ 전체 Ping 실패:", err);
+    } finally {
+      setIsPinging(false);
+    }
+  }, [isPinging]);
+
   const handleDeviceClick = useCallback(async (device: Device) => {
     setSelectedDevice(device);
     setTraceResult(null);
@@ -206,6 +252,12 @@ const MainPage = () => {
     [allCables, resetSelections]
   );
 
+  // 🆕 새로고침 함수 (Ping 에러도 초기화)
+  const handleRefresh = useCallback(() => {
+    setPingError(null);
+    window.location.reload();
+  }, []);
+
   if (loading) return <LoadingSpinner />;
   if (error)
     return (
@@ -216,7 +268,7 @@ const MainPage = () => {
     <div className="h-screen flex flex-col bg-slate-100">
       <div className="border-b border-slate-200 shrink-0">
         <ControlBar
-          onRefresh={() => window.location.reload()}
+          onRefresh={handleRefresh}
           onToggleProblemOnly={() => setShowProblemOnly((prev) => !prev)}
           showProblemOnly={showProblemOnly}
           searchQuery={searchQuery}
@@ -232,8 +284,20 @@ const MainPage = () => {
               (d) => d.status === DeviceStatus.Unstable
             ).length,
           }}
+          // 🆕 Ping 관련 props 추가
+          onPingAll={handlePingAll}
+          isPinging={isPinging}
         />
       </div>
+
+      {/* 🆕 Ping 에러 표시 */}
+      {pingError && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-3 mx-6 mt-2">
+          <div className="text-red-700 text-sm">
+            <strong>Ping 오류:</strong> {pingError}
+          </div>
+        </div>
+      )}
 
       {/* <LayoutSwitcher layoutMode={layoutMode} onChange={setLayoutMode} /> */}
 

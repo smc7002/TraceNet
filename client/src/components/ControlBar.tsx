@@ -11,6 +11,9 @@ interface ControlBarProps {
     Offline: number;
     Unstable: number;
   };
+  // 🆕 Ping 관련 props 추가
+  onPingAll: () => void;
+  isPinging: boolean;
 }
 
 export default function ControlBar({
@@ -20,6 +23,8 @@ export default function ControlBar({
   searchQuery,
   onSearchChange,
   statusCounts,
+  onPingAll, // 🆕 전체 Ping 함수
+  isPinging, // 🆕 Ping 진행 상태
 }: ControlBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,6 +70,7 @@ export default function ControlBar({
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
         className="flex-1 px-4 py-2 text-sm border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition"
+        disabled={isPinging} // 🆕 Ping 중일 때 비활성화
       />
 
       {/* ✅ 상태 통계 */}
@@ -83,18 +89,40 @@ export default function ControlBar({
       {/* 🔘 버튼들 */}
       <button
         onClick={onToggleProblemOnly}
+        disabled={isPinging} // 🆕 Ping 중일 때 비활성화
         className={`px-3 py-2 rounded-md text-sm border ${
           showProblemOnly
             ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
             : "bg-white text-gray-800 border-slate-300 hover:bg-slate-100"
-        } transition`}
+        } disabled:opacity-50 disabled:cursor-not-allowed transition`}
       >
         🔍 문제 장비만
       </button>
 
+      {/* 🆕 전체 Ping 버튼 */}
+      <button
+        onClick={onPingAll}
+        disabled={isPinging}
+        className={`px-3 py-2 rounded-md text-sm border ${
+          isPinging
+            ? "bg-green-400 text-white border-green-400 cursor-not-allowed"
+            : "bg-green-600 text-white border-green-600 hover:bg-green-700"
+        } disabled:opacity-75 transition flex items-center gap-1`}
+      >
+        {isPinging ? (
+          <>
+            <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+            Ping 중...
+          </>
+        ) : (
+          <>📡 전체 Ping</>
+        )}
+      </button>
+
       <button
         onClick={onRefresh}
-        className="px-3 py-2 rounded-md text-sm bg-blue-600 text-white border border-blue-600 hover:bg-blue-700 transition"
+        disabled={isPinging} // 🆕 Ping 중일 때 비활성화
+        className="px-3 py-2 rounded-md text-sm bg-blue-600 text-white border border-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
       >
         🔄 새로고침
       </button>
@@ -102,7 +130,8 @@ export default function ControlBar({
       {/* 📂 JSON 업로드 */}
       <button
         onClick={handleImportClick}
-        className="px-3 py-2 rounded-md text-sm bg-slate-600 text-white border border-slate-600 hover:bg-slate-700 transition"
+        disabled={isPinging} // 🆕 Ping 중일 때 비활성화
+        className="px-3 py-2 rounded-md text-sm bg-slate-600 text-white border border-slate-600 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
       >
         📂 JSON 업로드
       </button>
