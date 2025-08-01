@@ -21,8 +21,6 @@ import { MiniMap } from "react-flow-renderer";
  * - 커스텀 노드/엣지 타입 지원
  * - 마우스 클릭 좌표 로깅 (디버깅용)
  *
- * @component
- * @version 1.1.0
  */
 
 /**
@@ -59,7 +57,6 @@ export default function NetworkDiagram({
   nodeTypes,
   edgeTypes,
 }: NetworkDiagramProps) {
-  
   // React Flow 컨테이너 참조
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
@@ -73,20 +70,18 @@ export default function NetworkDiagram({
     },
     [devices, onDeviceClick]
   );
-
   /**
    * 🎯 마우스 클릭 좌표 로깅 함수
    */
   const handlePaneClick = useCallback(
     (event: React.MouseEvent) => {
+      // 기존 좌표 출력 유지 (선택사항)
       console.log("🖱️ === 마우스 클릭 좌표 분석 ===");
 
-      // 1️⃣ 브라우저 화면 기준 좌표
       const screenX = event.clientX;
       const screenY = event.clientY;
       console.log(`📍 화면 좌표: (${screenX}, ${screenY})`);
 
-      // 2️⃣ React Flow 컨테이너 기준 좌표
       if (reactFlowWrapper.current) {
         const rect = reactFlowWrapper.current.getBoundingClientRect();
         const containerX = screenX - rect.left;
@@ -94,8 +89,19 @@ export default function NetworkDiagram({
         console.log(`📍 컨테이너 좌표: (${containerX}, ${containerY})`);
       }
 
-      // 원래 onCanvasClick 호출
-      onCanvasClick();
+      // 🎯 실제 선택 해제 처리
+      onCanvasClick(); // 외부 상태 초기화 (selectedDevice 등)
+
+      const reactFlowInstance = (window as any).reactFlowInstance;
+      if (
+        reactFlowInstance &&
+        typeof reactFlowInstance.setNodes === "function"
+      ) {
+        // 모든 노드의 selected 상태를 false로 변경
+        reactFlowInstance.setNodes((nodes: Node[]) =>
+          nodes.map((node) => ({ ...node, selected: false }))
+        );
+      }
     },
     [onCanvasClick]
   );
@@ -158,7 +164,9 @@ export default function NetworkDiagram({
                 x: containerX,
                 y: containerY,
               });
-              console.log(`📍 Flow 좌표: (${flowPosition.x}, ${flowPosition.y})`);
+              console.log(
+                `📍 Flow 좌표: (${flowPosition.x}, ${flowPosition.y})`
+              );
             }
           }
         }
@@ -173,19 +181,17 @@ export default function NetworkDiagram({
         onEdgeClick={onEdgeClick}
         onPaneClick={handlePaneClick}
         onInit={onInit}
-        
         // 🎯 연결 기능 완전 비활성화
-        nodesDraggable={false}          // 노드 드래그 비활성화
-        nodesConnectable={false}        // 노드 연결 비활성화
-        elementsSelectable={true}       // 선택은 가능하게
-        
+        nodesDraggable={false} // 노드 드래그 비활성화
+        nodesConnectable={false} // 노드 연결 비활성화
+        elementsSelectable={true} // 선택은 가능하게
         // 🎯 뷰포트 설정
         fitView={false}
         defaultZoom={1.0}
         defaultPosition={[0, 0]}
         translateExtent={[
           [-2000, -2000],
-          [3000, 2000]
+          [3000, 2000],
         ]}
         minZoom={0.3}
         maxZoom={2}

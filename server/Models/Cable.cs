@@ -1,3 +1,5 @@
+// Cable.cs
+
 using System.ComponentModel.DataAnnotations;
 
 namespace TraceNet.Models
@@ -9,9 +11,9 @@ namespace TraceNet.Models
     {
         [Key]
         public string CableId { get; set; } = null!;  // e.g., "CBL-001"
-    
-        public string? Description { get; set; }
 
+        public string? Description { get; set; }
+    
         public virtual CableConnection? Connection { get; set; }
     }
 }
