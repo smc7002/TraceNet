@@ -8,6 +8,8 @@ import {
   Activity,
   AlertTriangle,
   Wifi,
+  WifiOff,
+  Ban,
 } from "lucide-react";
 import { Handle, Position } from "react-flow-renderer";
 import type { NodeProps } from "react-flow-renderer";
@@ -19,7 +21,7 @@ import type { NodeProps } from "react-flow-renderer";
  *
  * ✨ 핵심 기능:
  * - 다양한 네트워크 디바이스 타입 지원 (서버, 스위치, PC, 라우터)
- * - 실시간 상태 모니터링 및 시각적 피드백
+ * - 실시간 Ping 상태 모니터링 및 시각적 피드백
  * - 다중 레이아웃 모드 지원 (Dagre, Radial)
  * - 동적 Handle 위치 계산을 통한 최적화된 연결점 배치
  * - 접근성 및 사용자 경험 최적화
@@ -27,6 +29,7 @@ import type { NodeProps } from "react-flow-renderer";
  * 🎯 설계 목표:
  * - 직관적인 네트워크 구조 파악
  * - 장애 상황 즉시 식별 가능
+ * - 실시간 Ping 모니터링
  * - 확장 가능한 컴포넌트 아키텍처
  * - 고성능 렌더링 (React.memo 최적화)
  * - 일관된 디자인 언어 적용 (Tailwind CSS)
@@ -37,13 +40,13 @@ import type { NodeProps } from "react-flow-renderer";
 // ==========================================
 
 /**
- * 네트워크 디바이스 상태 열거형
+ * 네트워크 디바이스 상태 열거형 (Ping 상태 포함)
  *
- * 실시간 모니터링 시스템과 연동하여 각 디바이스의 현재 상태를 표현
+ * 실시간 Ping 모니터링 시스템과 연동하여 각 디바이스의 현재 상태를 표현
  *
  * @enum {string}
  */
-export type DeviceStatus = "online" | "offline" | "unstable";
+export type DeviceStatus = "Online" | "Offline" | "Unstable" | "Unknown" | "Unreachable";
 
 /**
  * 지원되는 네트워크 디바이스 타입
@@ -64,7 +67,7 @@ export type DeviceType = "server" | "switch" | "pc" | "router";
 export type LayoutMode = "radial" | "dagre" | "hierarchical";
 
 /**
- * 커스텀 노드 데이터 인터페이스
+ * 커스텀 노드 데이터 인터페이스 (Ping 정보 추가)
  *
  * React Flow 노드에 전달되는 모든 필수 및 선택적 데이터를 정의
  * 실제 네트워크 디바이스의 속성과 시각화 설정을 포함
@@ -75,7 +78,7 @@ export interface CustomNodeData {
   /** 디바이스 타입 - 아이콘 및 스타일 결정 */
   type: DeviceType;
 
-  /** 실시간 디바이스 상태 - 색상 및 알림 표시 */
+  /** 실시간 디바이스 상태 - 색상 및 알림 표시 (Ping 결과 반영) */
   status: DeviceStatus;
 
   /** 디바이스 표시명 - 사용자 식별용 */
@@ -89,6 +92,12 @@ export interface CustomNodeData {
 
   /** IP 주소 - 네트워크 식별 및 진단용 */
   ipAddress?: string;
+
+  /** 🆕 Ping 결과 - 레이턴시 정보 (밀리초) */
+  latencyMs?: number | null;
+
+  /** 🆕 Ping 마지막 체크 시간 */
+  lastCheckedAt?: string;
 
   /** 확장 메타데이터 - 추후 기능 확장용 */
   metadata?: Record<string, unknown>;
@@ -117,11 +126,11 @@ interface CustomNodeProps extends NodeProps {
 }
 
 // ==========================================
-// 🎨 스타일 및 시각적 설정 상수
+// 🎨 스타일 및 시각적 설정 상수 (Ping 상태 추가)
 // ==========================================
 
 /**
- * 디바이스 상태별 텍스트 색상 매핑
+ * 디바이스 상태별 텍스트 색상 매핑 (Ping 상태 포함)
  *
  * Tailwind CSS 클래스를 사용한 일관된 색상 체계
  * 접근성을 고려한 충분한 대비율 확보
@@ -129,9 +138,11 @@ interface CustomNodeProps extends NodeProps {
  * @constant
  */
 const DEVICE_COLORS = {
-  online: "text-green-500", // 정상: 초록색 (성공)
-  offline: "text-red-500", // 오프라인: 빨간색 (위험)
-  unstable: "text-yellow-500", // 불안정: 노란색 (경고)
+  Online: "text-green-500",      // 정상: 초록색 (성공)
+  Offline: "text-red-500",       // 오프라인: 빨간색 (위험)
+  Unstable: "text-yellow-500",   // 불안정: 노란색 (경고)
+  Unknown: "text-gray-400",      // 알 수 없음: 회색 (중립)
+  Unreachable: "text-red-600",   // 도달불가: 진한 빨강 (심각)
 } as const;
 
 /**
@@ -143,9 +154,11 @@ const DEVICE_COLORS = {
  * @constant
  */
 const DEVICE_BG_COLORS = {
-  online: "bg-green-50", // 연한 초록 배경
-  offline: "bg-red-50", // 연한 빨강 배경
-  unstable: "bg-yellow-50", // 연한 노랑 배경
+  Online: "bg-green-50",         // 연한 초록 배경
+  Offline: "bg-red-50",          // 연한 빨강 배경
+  Unstable: "bg-yellow-50",      // 연한 노랑 배경
+  Unknown: "bg-gray-50",         // 연한 회색 배경
+  Unreachable: "bg-red-100",     // 진한 빨강 배경
 } as const;
 
 /**
@@ -226,13 +239,13 @@ const RADIAL_HANDLE_STYLE = {
 };
 
 // ==========================================
-// 🎨 스타일링 유틸리티 함수들
+// 🎨 스타일링 유틸리티 함수들 (Ping 상태 대응)
 // ==========================================
 
 /**
  * 디바이스 상태에 따른 텍스트 색상 클래스 반환
  *
- * @param status - 디바이스 상태
+ * @param status - 디바이스 상태 (Ping 결과 포함)
  * @returns Tailwind CSS 텍스트 색상 클래스
  */
 const getStatusColor = (status: DeviceStatus): string =>
@@ -241,7 +254,7 @@ const getStatusColor = (status: DeviceStatus): string =>
 /**
  * 디바이스 상태에 따른 배경 색상 클래스 반환
  *
- * @param status - 디바이스 상태
+ * @param status - 디바이스 상태 (Ping 결과 포함)
  * @returns Tailwind CSS 배경 색상 클래스
  */
 const getStatusBgColor = (status: DeviceStatus): string =>
@@ -257,14 +270,8 @@ const getStatusBgColor = (status: DeviceStatus): string =>
  * - 타입별 최적화된 아이콘 크기 적용
  *
  * @param type - 디바이스 타입
- * @param status - 디바이스 상태
+ * @param status - 디바이스 상태 (Ping 결과 포함)
  * @returns 스타일이 적용된 React 아이콘 컴포넌트
- *
- * @example
- * ```tsx
- * const serverIcon = getDeviceIcon('server', 'online');
- * // Returns: <Server size={28} className="text-green-500" aria-hidden />
- * ```
  */
 const getDeviceIcon = (type: DeviceType, status: DeviceStatus) => {
   const colorClass = getStatusColor(status);
@@ -295,41 +302,65 @@ const getDeviceIcon = (type: DeviceType, status: DeviceStatus) => {
 };
 
 /**
- * 디바이스 상태별 상태 표시 아이콘 생성 함수
+ * 디바이스 상태별 상태 표시 아이콘 생성 함수 (Ping 상태 포함)
  *
  * 🎯 기능:
- * - 상태별 직관적인 시각적 피드백 제공
+ * - Ping 결과에 따른 직관적인 시각적 피드백 제공
  * - 소형 아이콘으로 공간 효율성 확보
  * - 일관된 디자인 시스템 적용
  *
- * @param status - 디바이스 상태
+ * @param status - 디바이스 상태 (Ping 결과)
  * @returns 상태를 나타내는 React 컴포넌트
- *
- * @example
- * ```tsx
- * const onlineStatus = getStatusIcon('online');
- * // Returns: <Activity size={12} className="text-green-500" />
- * ```
  */
 const getStatusIcon = (status: DeviceStatus) => {
   const props = { size: 12, className: getStatusColor(status) };
 
   switch (status) {
-    case "online":
-      // 활동 상태: Activity 아이콘 (파형 모양)
+    case "Online":
+      // 온라인 상태: Activity 아이콘 (파형 모양)
       return <Activity {...props} />;
 
-    case "unstable":
+    case "Unstable":
       // 불안정 상태: 경고 삼각형
       return <AlertTriangle {...props} />;
 
-    case "offline":
-      // 오프라인 상태: 단순한 빨간 점
-      return <div className="w-3 h-3 rounded-full bg-red-500" />;
+    case "Offline":
+      // 오프라인 상태: WiFi 끊김 아이콘
+      return <WifiOff {...props} />;
 
+    case "Unreachable":
+      // 도달불가 상태: 금지 아이콘
+      return <Ban {...props} />;
+
+    case "Unknown":
     default:
-      return null;
+      // 알 수 없음: 단순한 회색 점
+      return <div className="w-3 h-3 rounded-full bg-gray-400" />;
   }
+};
+
+/**
+ * 🆕 레이턴시 값에 따른 색상 클래스 반환
+ *
+ * @param latencyMs - 레이턴시 (밀리초)
+ * @returns Tailwind CSS 텍스트 색상 클래스
+ */
+const getLatencyColor = (latencyMs: number | null): string => {
+  if (latencyMs === null) return "text-gray-500";
+  if (latencyMs < 100) return "text-green-600";    // 빠름
+  if (latencyMs < 500) return "text-yellow-600";   // 보통
+  return "text-red-600";                           // 느림
+};
+
+/**
+ * 🆕 레이턴시 표시 텍스트 생성
+ *
+ * @param latencyMs - 레이턴시 (밀리초)
+ * @returns 표시할 텍스트 문자열
+ */
+const getLatencyText = (latencyMs: number | null): string => {
+  if (latencyMs === null) return "timeout";
+  return `${latencyMs}ms`;
 };
 
 /**
@@ -407,20 +438,9 @@ const getNodeStyles = (
  * - 각 방향별로 적절한 오프셋 값 계산
  * - CSS transform을 활용한 중심점 정렬
  *
- * 🎯 목적:
- * - 연결선이 노드 중심에서 시작하는 것처럼 보이게 함
- * - 시각적으로 자연스러운 연결점 제공
- * - 다양한 노드 크기에 대응하는 동적 계산
- *
  * @param position - Handle의 방향 (Top, Bottom, Left, Right)
  * @param nodeType - 노드 타입 (크기 계산용)
  * @returns CSS 스타일 객체 (위치 및 변환 속성)
- *
- * @example
- * ```tsx
- * const offset = getRadialHandleOffset(Position.Top, 'server');
- * // Returns: { top: '-28px', left: '50%', transform: 'translateX(-50%)' }
- * ```
  */
 function getRadialHandleOffset(
   position: Position,
@@ -475,11 +495,11 @@ function getRadialHandleOffset(
 }
 
 // ==========================================
-// 🎯 메인 컴포넌트 구현부
+// 🎯 메인 컴포넌트 구현부 (Ping 정보 표시 추가)
 // ==========================================
 
 /**
- * 커스텀 네트워크 노드 컴포넌트
+ * 커스텀 네트워크 노드 컴포넌트 (Ping 모니터링 기능 포함)
  *
  * 🏗️ 아키텍처 특징:
  * - React.memo를 통한 렌더링 최적화
@@ -490,38 +510,19 @@ function getRadialHandleOffset(
  * 🔧 핵심 기능:
  * - 다중 레이아웃 모드 지원 (Dagre/Radial)
  * - 동적 Handle 위치 계산
- * - 실시간 상태 반영
+ * - 실시간 Ping 상태 반영
+ * - 레이턴시 정보 표시
  * - 키보드 네비게이션 지원
  *
  * 🎨 시각적 특징:
- * - 상태별 색상 구분
+ * - Ping 상태별 색상 구분
  * - 부드러운 애니메이션 효과
  * - 직관적인 아이콘 시스템
  * - 일관된 디자인 언어
- *
- * @param props - 컴포넌트 Props
- * @returns JSX.Element - 렌더링된 노드 컴포넌트
- *
- * @example
- * ```tsx
- * <CustomNode
- *   data={{
- *     type: 'server',
- *     status: 'online',
- *     label: 'Main-Server-01',
- *     ipAddress: '192.168.1.1',
- *     mode: 'radial'
- *   }}
- *   selected={false}
- *   sourcePosition={Position.Bottom}
- *   targetPosition={Position.Top}
- * />
- * ```
  */
 function CustomNode({
   data,
   selected = false,
-  //sourcePosition = Position.Bottom,
   targetPosition = Position.Top,
 }: CustomNodeProps) {
   // ⚙️ 컴포넌트 설정 추출
@@ -545,8 +546,6 @@ function CustomNode({
     mode === "dagre" ? HANDLE_STYLE : RADIAL_HANDLE_STYLE;
 
   // 📍 방사형 레이아웃용 Handle 위치 계산
-  // const sourceOffset =
-  //   mode === "radial" ? getRadialHandleOffset(sourcePosition, type) : {};
   const targetOffset =
     mode === "radial" ? getRadialHandleOffset(targetPosition, type) : {};
 
@@ -555,11 +554,10 @@ function CustomNode({
       className="flex flex-col items-center relative z-10"
       role="button"
       tabIndex={0}
-      aria-label={`${type} ${data.label} - ${status}`}
+      aria-label={`${type} ${data.label} - ${status} ${data.latencyMs ? `(${data.latencyMs}ms)` : ''}`}
       aria-selected={selected}
     >
       {/* 🎯 Target Handle - 입력 연결점 */}
-      {/* 다른 노드로부터 연결을 받는 지점 */}
       <Handle
         type="target"
         position={targetPosition}
@@ -571,10 +569,9 @@ function CustomNode({
       />
 
       {/* 🎯 Central Handle - 중앙 연결점 (방사형 전용) */}
-      {/* 방사형 레이아웃에서 모든 연결이 노드 중앙을 통과하도록 함 */}
       <Handle
         type="source"
-        position={Position.Bottom} // 실제 방향은 무관, 중앙 고정이 핵심
+        position={Position.Bottom}
         id="center-handle"
         style={{
           position: "absolute",
@@ -586,14 +583,12 @@ function CustomNode({
       />
 
       {/* 🌟 Server Node Special Handles (방사형 모드 전용) */}
-      {/* 서버 노드의 경우 모든 방향에서 연결 가능하도록 8방향 Handle 생성 */}
       {mode === "radial" && type === "server" && (
         <>
           {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => {
-            // 🧮 극좌표 계산: 각도를 라디안으로 변환
             const rad = (angle * Math.PI) / 180;
-            const offset = 28; // 서버 노드 반지름
-            const isSource = angle < 180; // 상반부는 source, 하반부는 target
+            const offset = 28;
+            const isSource = angle < 180;
 
             return (
               <Handle
@@ -603,7 +598,6 @@ function CustomNode({
                 id={`${isSource ? "source" : "target"}-${angle}`}
                 style={{
                   position: "absolute",
-                  // 🧮 원형 배치: 중심점에서 offset 거리만큼 떨어진 위치
                   left: `${50 + Math.cos(rad) * offset}px`,
                   top: `${50 + Math.sin(rad) * offset}px`,
                   transform: "translate(-50%, -50%)",
@@ -620,7 +614,7 @@ function CustomNode({
         {/* 📱 디바이스 타입 아이콘 */}
         {deviceIcon}
 
-        {/* 🔴 상태 표시 배지 (우상단) */}
+        {/* 🔴 상태 표시 배지 (우상단) - Ping 상태 반영 */}
         <div className={styles.statusBadge}>{statusIcon}</div>
       </div>
 
@@ -637,10 +631,19 @@ function CustomNode({
           {data.ipAddress}
         </div>
       )}
+
+      {/* 🆕 Ping 레이턴시 표시 */}
+      {showLabel && data.latencyMs !== undefined && (
+        <div 
+          className={`text-xs font-semibold mt-1 ${getLatencyColor(data.latencyMs)}`}
+          title={`Ping: ${getLatencyText(data.latencyMs)} ${data.lastCheckedAt ? `(${new Date(data.lastCheckedAt).toLocaleTimeString()})` : ''}`}
+        >
+          📡 {getLatencyText(data.latencyMs)}
+        </div>
+      )}
     </div>
   );
 }
 
 // 🚀 성능 최적화: React.memo로 불필요한 리렌더링 방지
-// Props가 변경되지 않으면 컴포넌트를 재사용하여 렌더링 성능 향상
 export default memo(CustomNode);
