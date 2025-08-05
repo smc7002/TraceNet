@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// 📁 client/src/components/NetworkDiagram.tsx - 🚀 성능 최적화 버전
+// 📁 client/src/components/NetworkDiagram.tsx 
 
 import React, { useCallback, useRef, useMemo } from "react";
 import ReactFlow from "react-flow-renderer";
@@ -7,15 +7,6 @@ import type { Node, Edge, NodeTypes, EdgeTypes } from "react-flow-renderer";
 import type { Device } from "../types/device";
 import { MiniMap } from "react-flow-renderer";
 
-/**
- * NetworkDiagram Component - 🚀 성능 최적화 버전
- * 
- * 주요 최적화:
- * 1. React.memo로 불필요한 리렌더링 방지
- * 2. useMemo로 nodes/edges 메모이제이션
- * 3. 조건부 렌더링으로 성능 향상
- * 4. 스마트 필터링 지원
- */
 
 interface NetworkDiagramProps {
   nodes: Node[];
@@ -179,6 +170,27 @@ const NetworkDiagram = React.memo(function NetworkDiagram({
     // 🚀 성능 최적화 옵션
     onlyRenderVisibleElements: true, // 보이는 요소만 렌더링
     selectNodesOnDrag: false, // 드래그 시 선택 비활성화
+    // 🎯 줌 변경 감지
+    onViewportChange: (viewport: { x: number; y: number; zoom: number }) => {
+      // 줌 레벨 기반 PC 노드 숨기기
+      const shouldHidePCs = viewport.zoom < 0.01;
+      
+      if (shouldHidePCs) {
+        // PC 노드들을 DOM에서 숨김 (CSS로)
+        const pcNodes = document.querySelectorAll('[data-node-type="pc"]');
+        pcNodes.forEach(node => {
+          (node as HTMLElement).style.opacity = '0.1';
+          (node as HTMLElement).style.pointerEvents = 'none';
+        });
+      } else {
+        // PC 노드들 다시 표시
+        const pcNodes = document.querySelectorAll('[data-node-type="pc"]');
+        pcNodes.forEach(node => {
+          (node as HTMLElement).style.opacity = '1';
+          (node as HTMLElement).style.pointerEvents = 'auto';
+        });
+      }
+    },
   }), []);
 
   return (
@@ -193,7 +205,14 @@ const NetworkDiagram = React.memo(function NetworkDiagram({
       }}
     >
       <ReactFlow
-        nodes={filteredNodes}
+        nodes={filteredNodes.map(node => ({
+          ...node,
+          // 🎯 PC 노드에 data-attribute 추가 (CSS 선택자용)
+          data: {
+            ...node.data,
+            'data-node-type': node.data?.type
+          }
+        }))}
         edges={filteredEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
@@ -216,8 +235,8 @@ const NetworkDiagram = React.memo(function NetworkDiagram({
       {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
         <div style={{
           position: 'absolute',
-          top: 70,
-          left: 10,
+          top: 80,
+          left: 20,
           background: 'rgba(0,0,0,0.7)',
           color: 'white',
           padding: '5px 10px',
@@ -227,7 +246,7 @@ const NetworkDiagram = React.memo(function NetworkDiagram({
         }}>
           📊 노드: {filteredNodes.length}/{nodes.length} | 
           엣지: {filteredEdges.length}/{edges.length} |
-          모드: {viewMode}
+          모드: {viewMode} 
         </div>
       )}
     </div>

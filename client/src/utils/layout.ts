@@ -312,7 +312,7 @@ export function getNewRadialLayoutedElements(
    * - 각도 간격: 360도를 스위치 수로 균등 분할
    * - Handle 위치: 각도에 따라 동적 최적화
    */
-  const switchRadius = 400;                                        // 서버-스위치 간 거리
+  const switchRadius = 1000;                                        // 서버-스위치 간 거리
   const switchAngleStep = (2 * Math.PI) / Math.max(switches.length, 1);  // 각도 간격 (라디안)
 
   switches.forEach((sw, index) => {

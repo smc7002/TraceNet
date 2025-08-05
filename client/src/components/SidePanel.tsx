@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios, { AxiosError } from "axios";
 import DeviceForm from "./DeviceForm";
 import CableForm from "./CableForm";
+import { fetchPortsByDevice, type Port } from "../api/deviceApi";
 import type { Device } from "../types/device";
 import type { CableDto } from "../types/cable";
 import type { TraceResponse } from "../types/trace";
@@ -16,6 +17,18 @@ interface SidePanelProps {
   setSelectedCable: (cable: CableDto | null) => void;
   refetchDevices: () => Promise<void>;
   refetchCables: () => Promise<void>;
+  devices: Device[];
+}
+
+// 포트 연결 상태 타입 정의
+interface PortConnection {
+  portNumber: number;
+  isActive: boolean;
+  connectedDevice?: string;
+  connectedDeviceType?: string;
+  connectedDeviceIp?: string;
+  connectedDeviceStatus?: string;
+  cableId?: number;
 }
 
 export default function SidePanel({
@@ -28,8 +41,99 @@ export default function SidePanel({
   setSelectedCable,
   refetchDevices,
   refetchCables,
+  devices,
 }: SidePanelProps) {
   const [deleting, setDeleting] = useState(false);
+  //const [ports] = useState<Port[]>([]);
+  const [loadingPorts, setLoadingPorts] = useState(false);
+  const [portConnections, setPortConnections] = useState<PortConnection[]>([]);
+
+  // 포트 정보 로드
+  useEffect(() => {
+    if (selectedDevice && selectedDevice.type === "Switch") {
+      loadPortConnections(selectedDevice.deviceId);
+    } else {
+      // setPorts([]); // 임시로 주석 처리
+      setPortConnections([]);
+    }
+  }, [selectedDevice, filteredCables]);
+
+  const loadPortConnections = async (deviceId: number) => {
+    try {
+      setLoadingPorts(true);
+      const devicePorts = await fetchPortsByDevice(deviceId);
+      // setPorts(devicePorts); // 임시로 주석 처리
+
+      // 케이블 연결 정보와 매칭하여 포트 연결 상태 생성
+      const connections = createPortConnections(
+        devicePorts,
+        filteredCables,
+        selectedDevice!,
+        devices 
+      );
+      setPortConnections(connections);
+    } catch (error) {
+      console.error("포트 정보 로드 실패:", error);
+      // setPorts([]); // 임시로 주석 처리
+      setPortConnections([]);
+    } finally {
+      setLoadingPorts(false);
+    }
+  };
+
+  const createPortConnections = (
+    devicePorts: Port[],
+    cables: CableDto[],
+    currentDevice: Device,
+    devices: Device[]
+  ): PortConnection[] => {
+    const maxPorts = Math.max(24, devicePorts.length);
+    const connections: PortConnection[] = [];
+
+    for (let portNum = 1; portNum <= maxPorts; portNum++) {
+      // 포트 정보가 없으면 기본 연결 상태 생성
+      const port = devicePorts.find((p) => p.portNumber === portNum);
+
+      const connection: PortConnection = {
+        portNumber: portNum,
+        isActive: port?.isActive ?? false,
+      };
+
+      // 포트 번호는 string으로 변환해서 비교해야 함
+      const connectedCable = cables.find((cable) => {
+        return (
+          (cable.fromDevice === currentDevice.name &&
+            cable.fromPort === String(portNum)) ||
+          (cable.toDevice === currentDevice.name &&
+            cable.toPort === String(portNum))
+        );
+      });
+
+      if (connectedCable) {
+        const isFrom = connectedCable.fromDevice === currentDevice.name;
+
+        connection.connectedDevice = isFrom
+          ? connectedCable.toDevice
+          : connectedCable.fromDevice;
+
+        // Cable ID는 string인데 PortConnection은 number로 예상했을 가능성 있으므로 Number() 처리
+        connection.cableId = Number(connectedCable.cableId);
+
+        // ✅ 연결된 장비의 상태 및 타입 찾아서 추가
+        const targetDevice = devices.find(
+          (d: Device) => d.name === connection.connectedDevice
+        );
+
+        connection.connectedDeviceStatus = targetDevice?.status ?? "Unknown";
+        connection.connectedDeviceType = targetDevice?.type ?? "Unknown";
+        connection.connectedDeviceIp = targetDevice?.ipAddress ?? undefined;
+      }
+
+      connections.push(connection);
+    }
+
+    return connections;
+  };
 
   const handleDeleteDevice = async () => {
     if (!selectedDevice) return;
@@ -41,8 +145,8 @@ export default function SidePanel({
 
     try {
       setDeleting(true);
-      setSelectedDevice(null); // 바로 패널 초기화
-      setSelectedCable(null); // 케이블 선택 해제
+      setSelectedDevice(null);
+      setSelectedCable(null);
       await axios.delete(`/api/device/${selectedDevice.deviceId}`);
       await Promise.all([refetchDevices(), refetchCables()]);
       console.log("✅ 삭제 완료 및 상태 갱신됨");
@@ -57,36 +161,36 @@ export default function SidePanel({
   };
 
   if (!selectedDevice) {
-  return (
-    <aside className="w-80 shrink-0 bg-white border-l border-slate-200 p-6 space-y-6 overflow-y-auto shadow-inner">
-      <h2 className="text-lg font-semibold">🔧 장비 및 케이블 등록</h2>
+    return (
+      <aside className="w-80 shrink-0 bg-white border-l border-slate-200 p-6 space-y-6 overflow-y-auto shadow-inner">
+        <h2 className="text-lg font-semibold">🔧 장비 및 케이블 등록</h2>
 
-      <DeviceForm onSuccess={refetchDevices} />
-      <CableForm onSuccess={refetchCables} />
+        <DeviceForm onSuccess={refetchDevices} />
+        <CableForm onSuccess={refetchCables} />
 
-      {/* 여기에 케이블 검색 결과 리스트 넣기! ⬇⬇⬇ */}
-      <section className="pt-4 border-t border-slate-200">
-        <h3 className="text-sm font-semibold text-slate-600 mb-2">🔌 케이블 검색 결과</h3>
-        <div className="space-y-2 text-sm max-h-48 overflow-y-auto">
-          {filteredCables.length === 0 ? (
-            <div className="text-slate-400">검색 결과 없음</div>
-          ) : (
-            filteredCables.map((cable) => (
-              <button
-                key={cable.cableId}
-                onClick={() => setSelectedCable(cable)}
-                className="block w-full text-left border px-2 py-1 rounded hover:bg-slate-100"
-              >
-                {cable.description || cable.cableId}
-              </button>
-            ))
-          )}
-        </div>
-      </section>
-    </aside>
-  );
-}
-
+        <section className="pt-4 border-t border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-600 mb-2">
+            🔌 케이블 검색 결과
+          </h3>
+          <div className="space-y-2 text-sm max-h-48 overflow-y-auto">
+            {filteredCables.length === 0 ? (
+              <div className="text-slate-400">검색 결과 없음</div>
+            ) : (
+              filteredCables.map((cable) => (
+                <button
+                  key={cable.cableId}
+                  onClick={() => setSelectedCable(cable)}
+                  className="block w-full text-left border px-2 py-1 rounded hover:bg-slate-100"
+                >
+                  {cable.description || cable.cableId}
+                </button>
+              ))
+            )}
+          </div>
+        </section>
+      </aside>
+    );
+  }
 
   if (selectedCable) {
     return (
@@ -102,7 +206,6 @@ export default function SidePanel({
           label="To 장비"
           value={`${selectedCable.toDevice} (${selectedCable.toPort})`}
         />
-        {/* 🔴 삭제 버튼 (선택) */}
         <button
           className="mt-6 w-full bg-red-500 text-white py-2 rounded hover:bg-red-600 transition"
           onClick={async () => {
@@ -129,6 +232,7 @@ export default function SidePanel({
     );
   }
 
+  // 장비 선택 시 표시되는 패널
   return (
     <aside className="w-80 shrink-0 flex flex-col bg-white border-l border-slate-200 shadow-md">
       {/* 🔷 헤더 */}
@@ -147,6 +251,59 @@ export default function SidePanel({
           <InfoItem label="IP 주소" value={selectedDevice.ipAddress ?? "-"} />
           <InfoItem label="장비 유형" value={selectedDevice.type} />
         </section>
+
+        {/* 🔌 포트 연결 상태 (스위치일 때만 표시) */}
+        {selectedDevice.type === "Switch" && (
+          <section>
+            <div className="text-slate-700 font-semibold mb-3">
+              🔌 포트 연결 상태
+            </div>
+            {loadingPorts ? (
+              <div className="text-slate-400 text-sm">포트 정보 로딩 중...</div>
+            ) : (
+              <div className="bg-slate-50 rounded-md p-3 max-h-64 overflow-y-auto">
+                <div className="grid grid-cols-1 gap-2 text-xs">
+                  {portConnections.map((port) => (
+                    <div
+                      key={port.portNumber}
+                      className={`flex justify-between items-center p-2 rounded border ${
+                        port.connectedDevice
+                          ? "bg-green-50 border-green-200"
+                          : "bg-slate-100 border-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono font-semibold">
+                          P{port.portNumber.toString().padStart(2, "0")}
+                        </span>
+                        <div
+                          className={`w-2 h-2 rounded-full ${
+                            port.isActive ? "bg-green-400" : "bg-slate-300"
+                          }`}
+                        />
+                      </div>
+
+                      <div className="text-right">
+                        {port.connectedDevice ? (
+                          <div>
+                            <div className="font-medium text-slate-700">
+                              {port.connectedDevice}
+                            </div>
+                            <div className="text-slate-500">
+                              {port.connectedDeviceType}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">미연결</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         <section>
           <div className="text-slate-700 font-semibold mb-3">🛤️ Trace 결과</div>
@@ -185,7 +342,7 @@ export default function SidePanel({
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: string }) {
+function InfoItem({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex justify-between items-center py-2 border-b border-slate-100">
       <span className="text-slate-500">{label}</span>

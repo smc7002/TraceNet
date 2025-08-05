@@ -332,6 +332,7 @@ const MainPage = () => {
           filteredCables={filteredCables}
           refetchDevices={async () => setDevices(await fetchDevices())}
           refetchCables={async () => setAllCables(await fetchCables())}
+          devices={devices}
         />
       </div>
     </div>

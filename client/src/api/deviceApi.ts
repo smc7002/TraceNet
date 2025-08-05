@@ -18,3 +18,52 @@ export async function fetchDevices(): Promise<Device[]> {
     throw error;
   }
 }
+
+// 🔌 포트 관련 타입 정의
+export interface Port {
+  portId: number;
+  deviceId: number;
+  portNumber: number;
+  isActive: boolean;
+  device?: {
+    deviceId: number;
+    name: string;
+    type: string;
+    ipAddress?: string;
+    status: string;
+  };
+}
+
+/**
+ * 특정 장비의 포트 목록 조회
+ * GET: /api/port?deviceId=3
+ */
+export async function fetchPortsByDevice(deviceId: number): Promise<Port[]> {
+  try {
+    const res = await axios.get(`${API_BASE}/port?deviceId=${deviceId}`);
+    
+    console.log(`📡 포트 조회 (deviceId: ${deviceId}):`, res.data);
+    
+    return res.data;
+  } catch (error) {
+    console.error(`❌ fetchPortsByDevice 에러 (deviceId: ${deviceId}):`, error);
+    throw error;
+  }
+}
+
+/**
+ * 전체 포트 목록 조회 (장비 정보 포함)
+ * GET: /api/ports
+ */
+export async function fetchAllPorts(): Promise<Port[]> {
+  try {
+    const res = await axios.get(`${API_BASE}/ports`);
+    
+    console.log("📡 전체 포트 조회:", res.data);
+    
+    return res.data;
+  } catch (error) {
+    console.error("❌ fetchAllPorts 에러:", error);
+    throw error;
+  }
+}
