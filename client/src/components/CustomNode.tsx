@@ -46,7 +46,12 @@ import type { NodeProps } from "react-flow-renderer";
  *
  * @enum {string}
  */
-export type DeviceStatus = "Online" | "Offline" | "Unstable" | "Unknown" | "Unreachable";
+export type DeviceStatus =
+  | "Online"
+  | "Offline"
+  | "Unstable"
+  | "Unknown"
+  | "Unreachable";
 
 /**
  * 지원되는 네트워크 디바이스 타입
@@ -104,6 +109,7 @@ export interface CustomNodeData {
 
   /** 방사형 레이아웃에서의 각도 정보 - Handle 위치 최적화용 */
   angleInDegrees?: number;
+  highlighted?: boolean;
 }
 
 /**
@@ -138,11 +144,11 @@ interface CustomNodeProps extends NodeProps {
  * @constant
  */
 const DEVICE_COLORS = {
-  Online: "text-green-500",      // 정상: 초록색 (성공)
-  Offline: "text-red-500",       // 오프라인: 빨간색 (위험)
-  Unstable: "text-yellow-500",   // 불안정: 노란색 (경고)
-  Unknown: "text-gray-400",      // 알 수 없음: 회색 (중립)
-  Unreachable: "text-red-600",   // 도달불가: 진한 빨강 (심각)
+  Online: "text-green-500", // 정상: 초록색 (성공)
+  Offline: "text-red-500", // 오프라인: 빨간색 (위험)
+  Unstable: "text-yellow-500", // 불안정: 노란색 (경고)
+  Unknown: "text-gray-400", // 알 수 없음: 회색 (중립)
+  Unreachable: "text-red-600", // 도달불가: 진한 빨강 (심각)
 } as const;
 
 /**
@@ -154,11 +160,11 @@ const DEVICE_COLORS = {
  * @constant
  */
 const DEVICE_BG_COLORS = {
-  Online: "bg-green-50",         // 연한 초록 배경
-  Offline: "bg-red-50",          // 연한 빨강 배경
-  Unstable: "bg-yellow-50",      // 연한 노랑 배경
-  Unknown: "bg-gray-50",         // 연한 회색 배경
-  Unreachable: "bg-red-100",     // 진한 빨강 배경
+  Online: "bg-green-50", // 연한 초록 배경
+  Offline: "bg-red-50", // 연한 빨강 배경
+  Unstable: "bg-yellow-50", // 연한 노랑 배경
+  Unknown: "bg-gray-50", // 연한 회색 배경
+  Unreachable: "bg-red-100", // 진한 빨강 배경
 } as const;
 
 /**
@@ -347,9 +353,9 @@ const getStatusIcon = (status: DeviceStatus) => {
  */
 const getLatencyColor = (latencyMs: number | null): string => {
   if (latencyMs === null) return "text-gray-500";
-  if (latencyMs < 100) return "text-green-600";    // 빠름
-  if (latencyMs < 500) return "text-yellow-600";   // 보통
-  return "text-red-600";                           // 느림
+  if (latencyMs < 100) return "text-green-600"; // 빠름
+  if (latencyMs < 500) return "text-yellow-600"; // 보통
+  return "text-red-600"; // 느림
 };
 
 /**
@@ -396,35 +402,32 @@ const LABEL_STYLES = {
 
 const getNodeStyles = (
   selected: boolean,
+  highlighted: boolean,
   status: DeviceStatus,
   type: DeviceType
 ) => {
-  // 🔲 선택 상태별 링 스타일
-  const baseRing = selected
-    ? "ring-2 ring-amber-400 ring-offset-2" // 선택됨: 황금색 링
-    : "ring-1 ring-slate-200"; // 기본: 회색 링
+  const ring = selected
+    ? "ring-2 ring-amber-400 ring-offset-2"
+    : highlighted
+    ? "ring-8 lime-400 ring-offset-2 animate-pulse"
+    : "ring-1 ring-slate-200";
 
-  // ✨ 인터랙션 효과
+  const pulse = highlighted ? "animate-pulse" : "";
+
   const hoverEffect = "hover:ring-2 hover:ring-blue-300 hover:scale-105";
   const transition = "transition-all duration-200 ease-in-out";
-
-  // 🌟 그림자 효과
   const shadow = selected
-    ? "drop-shadow-[0_0_3px_white]" // 선택 시: 강한 흰색 그림자
-    : "drop-shadow-[0_0_2px_gray]"; // 기본: 부드러운 회색 그림자
+    ? "drop-shadow-[0_0_3px_white]"
+    : highlighted
+    ? "drop-shadow-[0_0_6px_pink]"
+    : "drop-shadow-[0_0_2px_gray]";
 
-  // 🎨 배경 및 크기 설정
   const bgColor = getStatusBgColor(status);
   const nodeSize = NODE_SIZES[type] || NODE_SIZES.pc;
 
   return {
-    // 메인 노드 컨테이너 스타일
-    container: `${nodeSize} rounded-full ${bgColor} border-2 border-white ${baseRing} ${shadow} ${hoverEffect} ${transition} flex items-center justify-center cursor-pointer relative`,
-
-    // 🎯 타입별 라벨 스타일 적용
+    container: `${nodeSize} rounded-full ${bgColor} border-2 border-white ${ring} ${pulse} ${shadow} ${hoverEffect} ${transition} flex items-center justify-center cursor-pointer relative`,
     label: LABEL_STYLES[type] || LABEL_STYLES.pc,
-
-    // 상태 배지 스타일 (우상단 작은 원)
     statusBadge:
       "absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm",
   };
@@ -533,8 +536,8 @@ function CustomNode({
 
   // 🎨 스타일 객체 메모이제이션 (리렌더링 최적화)
   const styles = useMemo(
-    () => getNodeStyles(selected, status, type),
-    [selected, status, type]
+    () => getNodeStyles(selected, data.highlighted === true, status, type),
+    [selected, data.highlighted, status, type]
   );
 
   // 🖼️ 아이콘 컴포넌트 메모이제이션
@@ -554,7 +557,9 @@ function CustomNode({
       className="flex flex-col items-center relative z-10"
       role="button"
       tabIndex={0}
-      aria-label={`${type} ${data.label} - ${status} ${data.latencyMs ? `(${data.latencyMs}ms)` : ''}`}
+      aria-label={`${type} ${data.label} - ${status} ${
+        data.latencyMs ? `(${data.latencyMs}ms)` : ""
+      }`}
       aria-selected={selected}
     >
       {/* 🎯 Target Handle - 입력 연결점 */}
@@ -634,9 +639,15 @@ function CustomNode({
 
       {/* 🆕 Ping 레이턴시 표시 */}
       {showLabel && data.latencyMs !== undefined && (
-        <div 
-          className={`text-xs font-semibold mt-1 ${getLatencyColor(data.latencyMs)}`}
-          title={`Ping: ${getLatencyText(data.latencyMs)} ${data.lastCheckedAt ? `(${new Date(data.lastCheckedAt).toLocaleTimeString()})` : ''}`}
+        <div
+          className={`text-xs font-semibold mt-1 ${getLatencyColor(
+            data.latencyMs
+          )}`}
+          title={`Ping: ${getLatencyText(data.latencyMs)} ${
+            data.lastCheckedAt
+              ? `(${new Date(data.lastCheckedAt).toLocaleTimeString()})`
+              : ""
+          }`}
         >
           📡 {getLatencyText(data.latencyMs)}
         </div>

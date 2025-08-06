@@ -49,11 +49,11 @@ const MainPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [renderKey, setRenderKey] = useState(0);
-  
+
   // 🆕 Ping 관련 상태 추가
   const [isPinging, setIsPinging] = useState(false);
   const [pingError, setPingError] = useState<string | null>(null);
-  
+
   const traceTimestampRef = useRef<number>(0);
 
   const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
@@ -64,9 +64,9 @@ const MainPage = () => {
     setTraceResult(null);
     setTraceError(null);
     setTraceEdges([]);
-    setLayoutedNodes(prev => 
-    prev.map(node => ({ ...node, selected: false }))
-  );
+    setLayoutedNodes((prev) =>
+      prev.map((node) => ({ ...node, selected: false }))
+    );
   }, []);
 
   useEffect(() => {
@@ -101,7 +101,7 @@ const MainPage = () => {
   }, [allCables, searchQuery]);
 
   const allNodes: Node[] = useMemo(() => {
-    return filteredDevices.map((device) => ({
+    return devices.map((device) => ({
       id: `${device.deviceId}`,
       type: "custom",
       position: { x: 0, y: 0 },
@@ -111,9 +111,14 @@ const MainPage = () => {
         status: device.status,
         showLabel: true,
         mode: layoutMode,
+        /* 하이라이트 여부 */
+        highlighted:
+          searchQuery.length > 0 &&
+          (device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            device.ipAddress.includes(searchQuery)),
       },
     }));
-  }, [filteredDevices, layoutMode]);
+  }, [devices, searchQuery, layoutMode]);
 
   const pureBaseEdges = useMemo(() => {
     const isRadial = layoutMode === LayoutMode.Radial;
@@ -177,36 +182,40 @@ const MainPage = () => {
   // 🆕 전체 Ping 실행 함수
   const handlePingAll = useCallback(async () => {
     if (isPinging) return; // 중복 실행 방지
-    
+
     setIsPinging(true);
     setPingError(null);
-    
+
     try {
       console.log("🚀 전체 Ping 시작...");
       const pingResults = await pingAllDevices();
-      
+
       // 🎯 기존 devices 상태를 Ping 결과로 업데이트
-      setDevices(prevDevices => {
-        return prevDevices.map(device => {
-          const pingResult = pingResults.find(p => p.deviceId === device.deviceId);
+      setDevices((prevDevices) => {
+        return prevDevices.map((device) => {
+          const pingResult = pingResults.find(
+            (p) => p.deviceId === device.deviceId
+          );
           if (pingResult) {
             return {
               ...device,
-              status: pingResult.status as Device['status'], // 타입 안전성 확보
+              status: pingResult.status as Device["status"], // 타입 안전성 확보
               lastCheckedAt: pingResult.checkedAt,
             };
           }
           return device;
         });
       });
-      
+
       // 성공 메시지 표시 (선택적)
-      const online = pingResults.filter(r => r.status === "Online").length;
+      const online = pingResults.filter((r) => r.status === "Online").length;
       const total = pingResults.length;
       console.log(`✅ 전체 Ping 완료: ${online}/${total}개 온라인`);
-      
     } catch (err) {
-      const message = err instanceof Error ? err.message : "전체 Ping 중 오류가 발생했습니다.";
+      const message =
+        err instanceof Error
+          ? err.message
+          : "전체 Ping 중 오류가 발생했습니다.";
       setPingError(message);
       console.error("❌ 전체 Ping 실패:", err);
     } finally {
@@ -310,7 +319,7 @@ const MainPage = () => {
             selectedDevice={selectedDevice}
             onDeviceClick={handleDeviceClick}
             onCanvasClick={resetSelections}
-            devices={filteredDevices}
+            devices={devices}
             onEdgeClick={handleEdgeClick}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
