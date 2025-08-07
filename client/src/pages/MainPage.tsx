@@ -10,6 +10,7 @@ import type { TraceResponse } from "../types/trace";
 import type { CableDto } from "../types/cable";
 //import type { PingResultDto } from "../types/ping";
 import { DeviceStatus } from "../types/status";
+//import type { KeyboardNavigationConfig } from "../types/keyboard";
 import {
   LayoutMode,
   getNewRadialLayoutedElements,
@@ -54,6 +55,8 @@ const MainPage = () => {
   const [isPinging, setIsPinging] = useState(false);
   const [pingError, setPingError] = useState<string | null>(null);
 
+  const [keyboardNavEnabled, setKeyboardNavEnabled] = useState(true);
+
   const traceTimestampRef = useRef<number>(0);
 
   const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
@@ -77,7 +80,7 @@ const MainPage = () => {
     if (!selectedDevice) setTraceEdges([]);
   }, [selectedDevice]);
 
-  const filteredDevices = useMemo(() => {
+  const _filteredDevices = useMemo(() => {
     return devices.filter((d) => {
       const matchSearch =
         d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -293,9 +296,10 @@ const MainPage = () => {
               (d) => d.status === DeviceStatus.Unstable
             ).length,
           }}
-          // 🆕 Ping 관련 props 추가
           onPingAll={handlePingAll}
           isPinging={isPinging}
+          keyboardNavEnabled={keyboardNavEnabled}
+          onToggleKeyboardNav={() => setKeyboardNavEnabled((prev) => !prev)}
         />
       </div>
 
@@ -323,6 +327,11 @@ const MainPage = () => {
             onEdgeClick={handleEdgeClick}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            keyboardNavigationEnabled={keyboardNavEnabled}
+            isPinging={isPinging}
+            viewMode="full"
+            showOnlyProblems={showProblemOnly}
+            zoomLevel={1.0}
           />
           {devices.length === 0 && (
             <div className="mt-6 text-white text-center text-sm bg-black/30 rounded p-2">
