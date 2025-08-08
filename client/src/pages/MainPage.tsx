@@ -4,13 +4,11 @@ import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { fetchDevices } from "../api/deviceApi";
 import { fetchTrace } from "../api/traceApi";
 import { fetchCables } from "../api/cableApi";
-import { pingAllDevices } from "../api/pingApi"; // 🆕 Ping API 추가
+import { pingAllDevices } from "../api/pingApi";
 import type { Device } from "../types/device";
 import type { TraceResponse } from "../types/trace";
 import type { CableDto } from "../types/cable";
-//import type { PingResultDto } from "../types/ping";
 import { DeviceStatus } from "../types/status";
-//import type { KeyboardNavigationConfig } from "../types/keyboard";
 import {
   LayoutMode,
   getNewRadialLayoutedElements,
@@ -28,7 +26,6 @@ import SidePanel from "../components/SidePanel";
 import ControlBar from "../components/ControlBar";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorState from "../components/ErrorState";
-//import LayoutSwitcher from "../components/LayoutSwitcher";
 import CustomNode from "../components/CustomNode";
 import CustomEdge from "../utils/CustomEdge";
 import { alignNodesToCalculatedCenters } from "../utils/nodeCenterCalculator";
@@ -51,15 +48,23 @@ const MainPage = () => {
   const [error, setError] = useState("");
   const [renderKey, setRenderKey] = useState(0);
 
-  // 🆕 Ping 관련 상태 추가
+  // 🆕 Ping 관련 상태
   const [isPinging, setIsPinging] = useState(false);
   const [pingError, setPingError] = useState<string | null>(null);
 
+  // 🎯 NEW: Zoom Level 상태 추가
+  const [currentZoomLevel, setCurrentZoomLevel] = useState(1.0);
+
   const [keyboardNavEnabled, setKeyboardNavEnabled] = useState(true);
-
   const traceTimestampRef = useRef<number>(0);
-
   const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
+
+  // 🎯 NEW: Zoom Level 변경 핸들러
+  const handleZoomChange = useCallback((zoomLevel: number) => {
+    setCurrentZoomLevel(zoomLevel);
+    console.log(`🔍 ZOOM CHANGE: ${zoomLevel.toFixed(3)} (임계값: 0.7)`);
+    console.log(`🎯 PC 노드 숨김 여부: ${zoomLevel < 0.7}`);
+  }, []);
 
   const resetSelections = useCallback(() => {
     setSelectedDevice(null);
@@ -80,7 +85,7 @@ const MainPage = () => {
     if (!selectedDevice) setTraceEdges([]);
   }, [selectedDevice]);
 
-  const _filteredDevices = useMemo(() => {
+  const filteredDevices = useMemo(() => {
     return devices.filter((d) => {
       const matchSearch =
         d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -103,6 +108,7 @@ const MainPage = () => {
     });
   }, [allCables, searchQuery]);
 
+  // 🎯 NEW: Zoom Level 기반 노드 필터링
   const allNodes: Node[] = useMemo(() => {
     return devices.map((device) => ({
       id: `${device.deviceId}`,
@@ -114,7 +120,6 @@ const MainPage = () => {
         status: device.status,
         showLabel: true,
         mode: layoutMode,
-        /* 하이라이트 여부 */
         highlighted:
           searchQuery.length > 0 &&
           (device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -123,38 +128,88 @@ const MainPage = () => {
     }));
   }, [devices, searchQuery, layoutMode]);
 
+  // 🎯 NEW: Zoom Level에 따른 스마트 노드 필터링
+  const smartFilteredNodes = useMemo(() => {
+    const ZOOM_THRESHOLD = 0.7; // PC 노드를 숨기는 zoom level 임계값
+    const baseNodes = filteredDevices;
+
+    // zoom level이 낮으면 PC 노드 제거
+    if (currentZoomLevel < ZOOM_THRESHOLD) {
+      const filteredNodes = allNodes.filter((node) => {
+        const nodeType = node.data?.type;
+        return (
+          nodeType === "server" ||
+          nodeType === "switch" ||
+          nodeType === "router"
+        );
+      });
+
+      // 개발 환경에서 필터링 정보 로그
+      if (window.location.hostname === "localhost") {
+        const originalCount = allNodes.length;
+        const filteredCount = filteredNodes.length;
+        console.log(
+          `🎯 PC 노드 숨김: ${originalCount} → ${filteredCount} (zoom: ${currentZoomLevel.toFixed(
+            2
+          )})`
+        );
+      }
+
+      return filteredNodes;
+    }
+
+    // zoom level이 충분하면 모든 노드 표시
+    return allNodes;
+  }, [allNodes, currentZoomLevel]);
+
   const pureBaseEdges = useMemo(() => {
     const isRadial = layoutMode === LayoutMode.Radial;
     return mapCablesToEdges(allCables, isRadial);
   }, [allCables, layoutMode]);
 
-  const renderEdges = useMemo(() => {
-    const filteredBase = excludeTraceOverlaps(pureBaseEdges, traceEdges);
+  // 🎯 NEW: 필터링된 노드에 맞는 엣지 필터링
+  const smartFilteredEdges = useMemo(() => {
+    const nodeIds = new Set(smartFilteredNodes.map((node) => node.id));
+
+    // 필터링된 노드들 간의 연결만 표시
+    const filteredBaseEdges = pureBaseEdges.filter(
+      (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)
+    );
+
+    const filteredTraceEdges = traceEdges.filter(
+      (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)
+    );
+
+    const finalBaseEdges = excludeTraceOverlaps(
+      filteredBaseEdges,
+      filteredTraceEdges
+    );
+
     return [
-      ...filteredBase,
-      ...traceEdges.map((edge) => ({
+      ...finalBaseEdges,
+      ...filteredTraceEdges.map((edge) => ({
         ...edge,
         id: `trace-${edge.id}`,
       })),
     ];
-  }, [pureBaseEdges, traceEdges]);
+  }, [pureBaseEdges, traceEdges, smartFilteredNodes]);
 
   useEffect(() => {
+    // 🎯 MODIFIED: smartFilteredNodes 사용
     const layout =
       layoutMode === LayoutMode.Radial
-        ? getNewRadialLayoutedElements(allNodes, pureBaseEdges)
-        : getDagreLayoutedElements(allNodes, pureBaseEdges);
+        ? getNewRadialLayoutedElements(smartFilteredNodes, smartFilteredEdges)
+        : getDagreLayoutedElements(smartFilteredNodes, smartFilteredEdges);
 
     const final = alignNodesToCalculatedCenters(layout.nodes, layout.edges);
 
-    // ✅ 각 노드에 selected 상태 명시적으로 설정
     const nodesWithSelection = final.nodes.map((node) => ({
       ...node,
-      selected: selectedDevice?.deviceId.toString() === node.id, // 🎯 핵심 수정
+      selected: selectedDevice?.deviceId.toString() === node.id,
     }));
 
     setLayoutedNodes(nodesWithSelection);
-  }, [layoutMode, allNodes, pureBaseEdges, selectedDevice]); // 🎯 selectedDevice 의존성 추가
+  }, [layoutMode, smartFilteredNodes, smartFilteredEdges, selectedDevice]); // 🎯 smartFilteredNodes 의존성
 
   useEffect(() => {
     let isMounted = true;
@@ -182,9 +237,8 @@ const MainPage = () => {
     };
   }, []);
 
-  // 🆕 전체 Ping 실행 함수
   const handlePingAll = useCallback(async () => {
-    if (isPinging) return; // 중복 실행 방지
+    if (isPinging) return;
 
     setIsPinging(true);
     setPingError(null);
@@ -193,7 +247,6 @@ const MainPage = () => {
       console.log("🚀 전체 Ping 시작...");
       const pingResults = await pingAllDevices();
 
-      // 🎯 기존 devices 상태를 Ping 결과로 업데이트
       setDevices((prevDevices) => {
         return prevDevices.map((device) => {
           const pingResult = pingResults.find(
@@ -202,7 +255,7 @@ const MainPage = () => {
           if (pingResult) {
             return {
               ...device,
-              status: pingResult.status as Device["status"], // 타입 안전성 확보
+              status: pingResult.status as Device["status"],
               lastCheckedAt: pingResult.checkedAt,
             };
           }
@@ -210,7 +263,6 @@ const MainPage = () => {
         });
       });
 
-      // 성공 메시지 표시 (선택적)
       const online = pingResults.filter((r) => r.status === "Online").length;
       const total = pingResults.length;
       console.log(`✅ 전체 Ping 완료: ${online}/${total}개 온라인`);
@@ -264,7 +316,6 @@ const MainPage = () => {
     [allCables, resetSelections]
   );
 
-  // 🆕 새로고침 함수 (Ping 에러도 초기화)
   const handleRefresh = useCallback(() => {
     setPingError(null);
     window.location.reload();
@@ -303,7 +354,6 @@ const MainPage = () => {
         />
       </div>
 
-      {/* 🆕 Ping 에러 표시 */}
       {pingError && (
         <div className="bg-red-50 border-l-4 border-red-400 p-3 mx-6 mt-2">
           <div className="text-red-700 text-sm">
@@ -312,14 +362,12 @@ const MainPage = () => {
         </div>
       )}
 
-      {/* <LayoutSwitcher layoutMode={layoutMode} onChange={setLayoutMode} /> */}
-
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 bg-gradient-to-br from-indigo-400 to-purple-500 overflow-auto p-1">
           <NetworkDiagram
             key={renderKey}
             nodes={layoutedNodes}
-            edges={renderEdges}
+            edges={smartFilteredEdges} // 🎯 MODIFIED: smartFilteredEdges 사용
             selectedDevice={selectedDevice}
             onDeviceClick={handleDeviceClick}
             onCanvasClick={resetSelections}
@@ -331,7 +379,8 @@ const MainPage = () => {
             isPinging={isPinging}
             viewMode="full"
             showOnlyProblems={showProblemOnly}
-            zoomLevel={1.0}
+            zoomLevel={currentZoomLevel} // 🎯 MODIFIED: 실제 zoom level 전달
+            onZoomChange={handleZoomChange} // 🎯 NEW: zoom level 변경 콜백 추가
           />
           {devices.length === 0 && (
             <div className="mt-6 text-white text-center text-sm bg-black/30 rounded p-2">
