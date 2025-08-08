@@ -34,7 +34,7 @@ const NetworkDiagram = React.memo(function NetworkDiagram({
   nodeTypes,
   edgeTypes,
   viewMode = "full",
-  showOnlyProblems = false,
+  //showOnlyProblems = false,
   zoomLevel = 1.0,
   keyboardNavigationEnabled = true,
   isPinging = false,

@@ -397,7 +397,7 @@ const LABEL_STYLES = {
     "mt-2 text-xs font-bold text-white bg-purple-900/90 backdrop-blur-sm px-2 py-1 rounded-md text-center max-w-20 truncate shadow-md border border-white/20",
   router:
     "mt-2 text-xs font-bold text-white bg-green-900/90 backdrop-blur-sm px-2 py-1 rounded-md text-center max-w-20 truncate shadow-md border border-white/20",
-  pc: "mt-2 text-xs text-gray-700 font-medium text-center max-w-20 truncate", // 기존 스타일 유지
+  pc: "mt-2 text-xs text-gray-700 font-medium text-center max-w-20 truncate",
 } as const;
 
 const getNodeStyles = (
@@ -406,28 +406,43 @@ const getNodeStyles = (
   status: DeviceStatus,
   type: DeviceType
 ) => {
+  // 링 스타일 결정: 선택됨 > 하이라이트됨 > 기본
   const ring = selected
-    ? "ring-2 ring-amber-400 ring-offset-2"
+    ? "ring-2 ring-amber-400 ring-offset-2" // 선택된 노드: 노란색 링
     : highlighted
-    ? "ring-8 lime-400 ring-offset-2 animate-pulse"
-    : "ring-1 ring-slate-200";
+    ? "ring-8 ring-red-400 ring-offset-2 animate-pulse" // 검색 결과: 
+    : "ring-1 ring-slate-200"; // 기본: 회색 얇은 링
 
+  // 하이라이트 시 펄스 애니메이션 추가
   const pulse = highlighted ? "animate-pulse" : "";
 
+  // 마우스 호버 시 파란색 링과 확대 효과
   const hoverEffect = "hover:ring-2 hover:ring-blue-300 hover:scale-105";
-  const transition = "transition-all duration-200 ease-in-out";
-  const shadow = selected
-    ? "drop-shadow-[0_0_3px_white]"
-    : highlighted
-    ? "drop-shadow-[0_0_6px_pink]"
-    : "drop-shadow-[0_0_2px_gray]";
 
+  // 부드러운 전환 애니메이션 (200ms)
+  const transition = "transition-all duration-200 ease-in-out";
+
+  // 그림자 효과: 선택/하이라이트 상태에 따라 다른 색상
+  const shadow = selected
+    ? "drop-shadow-[0_0_3px_white]" // 선택: 흰색 글로우
+    : highlighted
+    ? "drop-shadow-[0_0_6px_pink]" // 하이라이트: 핑크 글로우
+    : "drop-shadow-[0_0_2px_gray]"; // 기본: 회색 그림자
+
+  // 상태에 따른 배경색 (Online=녹색, Offline=빨강 등)
   const bgColor = getStatusBgColor(status);
+
+  // 장비 타입별 노드 크기 (server > switch > pc)
   const nodeSize = NODE_SIZES[type] || NODE_SIZES.pc;
 
   return {
+    // 메인 노드 컨테이너: 원형 + 상태색 + 링 + 애니메이션
     container: `${nodeSize} rounded-full ${bgColor} border-2 border-white ${ring} ${pulse} ${shadow} ${hoverEffect} ${transition} flex items-center justify-center cursor-pointer relative`,
+
+    // 노드 라벨 스타일 (장비 타입별로 다름)
     label: LABEL_STYLES[type] || LABEL_STYLES.pc,
+
+    // 상태 배지: 우상단 작은 원 (상태 아이콘 표시용)
     statusBadge:
       "absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm",
   };
