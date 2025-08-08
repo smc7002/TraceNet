@@ -33,6 +33,8 @@ import { alignNodesToCalculatedCenters } from "../utils/nodeCenterCalculator";
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
 
+const ZOOM_HIDE_PC = 0.7; // 이 값보다 작으면 PC 숨김
+
 const MainPage = () => {
   const [devices, setDevices] = useState<Device[]>([]);
   const [allCables, setAllCables] = useState<CableDto[]>([]);
@@ -48,22 +50,24 @@ const MainPage = () => {
   const [error, setError] = useState("");
   const [renderKey, setRenderKey] = useState(0);
 
-  // 🆕 Ping 관련 상태
+  // Ping
   const [isPinging, setIsPinging] = useState(false);
   const [pingError, setPingError] = useState<string | null>(null);
 
-  // 🎯 NEW: Zoom Level 상태 추가
+  // Zoom
   const [currentZoomLevel, setCurrentZoomLevel] = useState(1.0);
 
+  // 기타
   const [keyboardNavEnabled, setKeyboardNavEnabled] = useState(true);
   const traceTimestampRef = useRef<number>(0);
   const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
 
-  // 🎯 NEW: Zoom Level 변경 핸들러
+  // zoom 변경 콜백
   const handleZoomChange = useCallback((zoomLevel: number) => {
     setCurrentZoomLevel(zoomLevel);
-    console.log(`🔍 ZOOM CHANGE: ${zoomLevel.toFixed(3)} (임계값: 0.7)`);
-    console.log(`🎯 PC 노드 숨김 여부: ${zoomLevel < 0.7}`);
+    if (window.location.hostname === "localhost") {
+      console.log(`[ZOOM] ${zoomLevel.toFixed(2)} hidePC=${zoomLevel < ZOOM_HIDE_PC}`);
+    }
   }, []);
 
   const resetSelections = useCallback(() => {
@@ -71,10 +75,8 @@ const MainPage = () => {
     setSelectedCable(null);
     setTraceResult(null);
     setTraceError(null);
-    setTraceEdges([]);
-    setLayoutedNodes((prev) =>
-      prev.map((node) => ({ ...node, selected: false }))
-    );
+    // 트레이스는 비우지 말자(레이아웃 흔들림 방지). 필요시 사용자가 새 트레이스 클릭하면 교체됨.
+    setLayoutedNodes((prev) => prev.map((n) => ({ ...n, selected: false })));
   }, []);
 
   useEffect(() => {
@@ -82,7 +84,9 @@ const MainPage = () => {
   }, [layoutMode]);
 
   useEffect(() => {
-    if (!selectedDevice) setTraceEdges([]);
+    if (!selectedDevice) {
+      // 선택 해제 시 트레이스 유지(화면 안정성)
+    }
   }, [selectedDevice]);
 
   const filteredDevices = useMemo(() => {
@@ -99,16 +103,17 @@ const MainPage = () => {
 
   const filteredCables = useMemo(() => {
     return allCables.filter((c) => {
+      const q = searchQuery.toLowerCase();
       return (
-        c.cableId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.fromDevice.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.toDevice.toLowerCase().includes(searchQuery.toLowerCase())
+        c.cableId.toLowerCase().includes(q) ||
+        c.description?.toLowerCase().includes(q) ||
+        c.fromDevice.toLowerCase().includes(q) ||
+        c.toDevice.toLowerCase().includes(q)
       );
     });
   }, [allCables, searchQuery]);
 
-  // 🎯 NEW: Zoom Level 기반 노드 필터링
+  // 모든 장비 → 노드
   const allNodes: Node[] = useMemo(() => {
     return devices.map((device) => ({
       id: `${device.deviceId}`,
@@ -128,89 +133,74 @@ const MainPage = () => {
     }));
   }, [devices, searchQuery, layoutMode]);
 
-  // 🎯 NEW: Zoom Level에 따른 스마트 노드 필터링
+  // Zoom 기준 노드 필터링 (줌 아웃 시 PC 제거)
   const smartFilteredNodes = useMemo(() => {
-    const ZOOM_THRESHOLD = 0.7; // PC 노드를 숨기는 zoom level 임계값
-    const baseNodes = filteredDevices;
-
-    // zoom level이 낮으면 PC 노드 제거
-    if (currentZoomLevel < ZOOM_THRESHOLD) {
-      const filteredNodes = allNodes.filter((node) => {
-        const nodeType = node.data?.type;
-        return (
-          nodeType === "server" ||
-          nodeType === "switch" ||
-          nodeType === "router"
-        );
+    if (currentZoomLevel < ZOOM_HIDE_PC) {
+      const filtered = allNodes.filter((n) => {
+        const t = n.data?.type;
+        return t === "server" || t === "switch" || t === "router";
       });
-
-      // 개발 환경에서 필터링 정보 로그
       if (window.location.hostname === "localhost") {
-        const originalCount = allNodes.length;
-        const filteredCount = filteredNodes.length;
-        console.log(
-          `🎯 PC 노드 숨김: ${originalCount} → ${filteredCount} (zoom: ${currentZoomLevel.toFixed(
-            2
-          )})`
-        );
+        console.log(`hide PC: ${allNodes.length} -> ${filtered.length}`);
       }
-
-      return filteredNodes;
+      return filtered;
     }
-
-    // zoom level이 충분하면 모든 노드 표시
     return allNodes;
   }, [allNodes, currentZoomLevel]);
 
+  // 전체 케이블 → 엣지 (베이스)
   const pureBaseEdges = useMemo(() => {
     const isRadial = layoutMode === LayoutMode.Radial;
     return mapCablesToEdges(allCables, isRadial);
   }, [allCables, layoutMode]);
 
-  // 🎯 NEW: 필터링된 노드에 맞는 엣지 필터링
+  // 렌더용 엣지(PC 숨김 반영 + 트레이스 포함)
   const smartFilteredEdges = useMemo(() => {
-    const nodeIds = new Set(smartFilteredNodes.map((node) => node.id));
-
-    // 필터링된 노드들 간의 연결만 표시
-    const filteredBaseEdges = pureBaseEdges.filter(
-      (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)
+    const nodeIds = new Set(smartFilteredNodes.map((n) => n.id));
+    const filteredBase = pureBaseEdges.filter(
+      (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
     );
-
-    const filteredTraceEdges = traceEdges.filter(
-      (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)
+    const filteredTrace = traceEdges.filter(
+      (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
     );
-
-    const finalBaseEdges = excludeTraceOverlaps(
-      filteredBaseEdges,
-      filteredTraceEdges
-    );
-
+    const finalBase = excludeTraceOverlaps(filteredBase, filteredTrace);
     return [
-      ...finalBaseEdges,
-      ...filteredTraceEdges.map((edge) => ({
-        ...edge,
-        id: `trace-${edge.id}`,
-      })),
+      ...finalBase,
+      ...filteredTrace.map((e) => ({ ...e, id: `trace-${e.id}` })),
     ];
   }, [pureBaseEdges, traceEdges, smartFilteredNodes]);
 
-  useEffect(() => {
-    // 🎯 MODIFIED: smartFilteredNodes 사용
-    const layout =
+  // ✅ 레이아웃은 "베이스 엣지"만 사용해서 흔들림 방지
+  const baseEdgesForLayout = useMemo(() => {
+    const ids = new Set(smartFilteredNodes.map((n) => n.id));
+    return pureBaseEdges.filter((e) => ids.has(e.source) && ids.has(e.target));
+  }, [pureBaseEdges, smartFilteredNodes]);
+
+  // ✅ 레이아웃 고정 계산 (선택/트레이스/줌 상태 변화와 분리)
+  const layoutResult = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
+    const base =
       layoutMode === LayoutMode.Radial
-        ? getNewRadialLayoutedElements(smartFilteredNodes, smartFilteredEdges)
-        : getDagreLayoutedElements(smartFilteredNodes, smartFilteredEdges);
+        ? getNewRadialLayoutedElements(smartFilteredNodes, baseEdgesForLayout)
+        : getDagreLayoutedElements(smartFilteredNodes, baseEdgesForLayout);
 
-    const final = alignNodesToCalculatedCenters(layout.nodes, layout.edges);
+    const { nodes: alignedNodes } = alignNodesToCalculatedCenters(
+      base.nodes,
+      base.edges
+    );
 
-    const nodesWithSelection = final.nodes.map((node) => ({
+    return { nodes: alignedNodes, edges: base.edges as Edge[] };
+  }, [layoutMode, smartFilteredNodes, baseEdgesForLayout]);
+
+  // ✅ 선택만 반영 (좌표 고정)
+  useEffect(() => {
+    const nodesWithSelection: Node[] = layoutResult.nodes.map((node) => ({
       ...node,
       selected: selectedDevice?.deviceId.toString() === node.id,
     }));
-
     setLayoutedNodes(nodesWithSelection);
-  }, [layoutMode, smartFilteredNodes, smartFilteredEdges, selectedDevice]); // 🎯 smartFilteredNodes 의존성
+  }, [layoutResult, selectedDevice]);
 
+  // 초기 데이터 로드
   useEffect(() => {
     let isMounted = true;
     const load = async () => {
@@ -224,8 +214,7 @@ const MainPage = () => {
           setAllCables(cableData);
         }
       } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "알 수 없는 오류입니다.";
+        const msg = err instanceof Error ? err.message : "알 수 없는 오류입니다.";
         if (isMounted) setError(msg);
       } finally {
         if (isMounted) setLoading(false);
@@ -237,52 +226,39 @@ const MainPage = () => {
     };
   }, []);
 
+  // Ping All
   const handlePingAll = useCallback(async () => {
     if (isPinging) return;
-
     setIsPinging(true);
     setPingError(null);
-
     try {
-      console.log("🚀 전체 Ping 시작...");
       const pingResults = await pingAllDevices();
-
-      setDevices((prevDevices) => {
-        return prevDevices.map((device) => {
-          const pingResult = pingResults.find(
-            (p) => p.deviceId === device.deviceId
-          );
-          if (pingResult) {
-            return {
-              ...device,
-              status: pingResult.status as Device["status"],
-              lastCheckedAt: pingResult.checkedAt,
-            };
-          }
-          return device;
-        });
-      });
-
-      const online = pingResults.filter((r) => r.status === "Online").length;
-      const total = pingResults.length;
-      console.log(`✅ 전체 Ping 완료: ${online}/${total}개 온라인`);
+      setDevices((prev) =>
+        prev.map((d) => {
+          const pr = pingResults.find((p) => p.deviceId === d.deviceId);
+          return pr
+            ? {
+                ...d,
+                status: pr.status as Device["status"],
+                lastCheckedAt: pr.checkedAt,
+              }
+            : d;
+        })
+      );
     } catch (err) {
       const message =
-        err instanceof Error
-          ? err.message
-          : "전체 Ping 중 오류가 발생했습니다.";
+        err instanceof Error ? err.message : "전체 Ping 중 오류가 발생했습니다.";
       setPingError(message);
-      console.error("❌ 전체 Ping 실패:", err);
     } finally {
       setIsPinging(false);
     }
   }, [isPinging]);
 
+  // 노드 클릭 → 트레이스 (기존 트레이스 즉시 비우지 않음)
   const handleDeviceClick = useCallback(async (device: Device) => {
     setSelectedDevice(device);
     setTraceResult(null);
     setTraceError(null);
-    setTraceEdges([]);
 
     if (device.type.toLowerCase() === "server") {
       alert("🔒 서버는 트레이스 대상이 아닙니다.");
@@ -292,11 +268,8 @@ const MainPage = () => {
     try {
       const result = await fetchTrace(device.deviceId);
       traceTimestampRef.current = Date.now();
-      const trace = mapTraceCablesToEdges(
-        result.cables,
-        traceTimestampRef.current
-      );
-      setTraceEdges(trace);
+      const trace = mapTraceCablesToEdges(result.cables, traceTimestampRef.current);
+      setTraceEdges(trace);     // 새 결과가 왔을 때만 교체
       setTraceResult(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "트레이스 로드 실패";
@@ -322,10 +295,7 @@ const MainPage = () => {
   }, []);
 
   if (loading) return <LoadingSpinner />;
-  if (error)
-    return (
-      <ErrorState message={error} onRetry={() => window.location.reload()} />
-    );
+  if (error) return <ErrorState message={error} onRetry={() => window.location.reload()} />;
 
   return (
     <div className="h-screen flex flex-col bg-slate-100">
@@ -337,15 +307,9 @@ const MainPage = () => {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           statusCounts={{
-            [DeviceStatus.Online]: devices.filter(
-              (d) => d.status === DeviceStatus.Online
-            ).length,
-            [DeviceStatus.Offline]: devices.filter(
-              (d) => d.status === DeviceStatus.Offline
-            ).length,
-            [DeviceStatus.Unstable]: devices.filter(
-              (d) => d.status === DeviceStatus.Unstable
-            ).length,
+            [DeviceStatus.Online]: devices.filter((d) => d.status === DeviceStatus.Online).length,
+            [DeviceStatus.Offline]: devices.filter((d) => d.status === DeviceStatus.Offline).length,
+            [DeviceStatus.Unstable]: devices.filter((d) => d.status === DeviceStatus.Unstable).length,
           }}
           onPingAll={handlePingAll}
           isPinging={isPinging}
@@ -367,7 +331,7 @@ const MainPage = () => {
           <NetworkDiagram
             key={renderKey}
             nodes={layoutedNodes}
-            edges={smartFilteredEdges} // 🎯 MODIFIED: smartFilteredEdges 사용
+            edges={smartFilteredEdges}      // 렌더는 트레이스 포함
             selectedDevice={selectedDevice}
             onDeviceClick={handleDeviceClick}
             onCanvasClick={resetSelections}
@@ -379,8 +343,8 @@ const MainPage = () => {
             isPinging={isPinging}
             viewMode="full"
             showOnlyProblems={showProblemOnly}
-            zoomLevel={currentZoomLevel} // 🎯 MODIFIED: 실제 zoom level 전달
-            onZoomChange={handleZoomChange} // 🎯 NEW: zoom level 변경 콜백 추가
+            zoomLevel={currentZoomLevel}
+            onZoomChange={handleZoomChange}
           />
           {devices.length === 0 && (
             <div className="mt-6 text-white text-center text-sm bg-black/30 rounded p-2">
