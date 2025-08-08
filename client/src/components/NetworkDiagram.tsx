@@ -192,7 +192,7 @@ const NetworkDiagram = React.memo(function NetworkDiagram({
         <div
           style={{
             position: "absolute",
-            top: 80,
+            top: 120,
             left: 10,
             background: "rgba(0,0,0,0.8)",
             color: "white",

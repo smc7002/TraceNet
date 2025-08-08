@@ -8,6 +8,7 @@ interface ControlBarProps {
   showProblemOnly: boolean;
   searchQuery: string;
   onSearchChange: (value: string) => void;
+  onSearchSubmit: () => void;
   statusCounts: {
     Online: number;
     Offline: number;
@@ -17,6 +18,7 @@ interface ControlBarProps {
   isPinging: boolean;
   keyboardNavEnabled?: boolean;
   onToggleKeyboardNav?: () => void;
+  searchError?: string;
 }
 
 export default function ControlBar({
@@ -25,11 +27,13 @@ export default function ControlBar({
   showProblemOnly,
   searchQuery,
   onSearchChange,
+  onSearchSubmit,
   statusCounts,
   onPingAll,
-  isPinging, 
+  isPinging,
   keyboardNavEnabled,
   onToggleKeyboardNav,
+  searchError,
 }: ControlBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,11 +75,21 @@ export default function ControlBar({
       {/* 🔍 검색창 */}
       <input
         type="text"
-        placeholder="장비 이름 or IP 검색..."
+        placeholder={
+          searchError ? "장비 없음: 다시 입력하세요" : "장비 이름 or IP 검색..."
+        } // 🆕
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
-        className="flex-1 px-4 py-2 text-sm border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition"
-        disabled={isPinging} // 🆕 Ping 중일 때 비활성화
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSearchSubmit();
+        }} // ✅ Enter로 실행
+        className={`flex-1 px-4 py-2 text-sm border rounded-md outline-none transition
+    ${
+      searchError
+        ? "border-red-400 focus:ring-2 focus:ring-red-400 focus:border-red-400"
+        : "border-slate-300 focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+    }`}
+        disabled={isPinging}
       />
 
       {/* ✅ 상태 통계 */}
