@@ -13,7 +13,7 @@ import { DeviceStatus } from "../types/status";
 import {
   LayoutMode,
   getNewRadialLayoutedElements,
-  getDagreLayoutedElements,
+  //getDagreLayoutedElements,
 } from "../utils/layout";
 import {
   mapCablesToEdges,
@@ -91,9 +91,12 @@ const MainPage = () => {
   const [state, setState] = useState<AppState>(initialState);
   const traceTimestampRef = useRef<number>(0);
 
-  const updateState = useCallback(<K extends keyof AppState>(key: K, value: AppState[K]) => {
-    setState((prev) => ({ ...prev, [key]: value }));
-  }, []);
+  const updateState = useCallback(
+    <K extends keyof AppState>(key: K, value: AppState[K]) => {
+      setState((prev) => ({ ...prev, [key]: value }));
+    },
+    []
+  );
   const updateMultipleStates = useCallback((updates: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...updates }));
   }, []);
@@ -135,7 +138,8 @@ const MainPage = () => {
         const nodeIds = new Set<string>();
         if (Array.isArray(result.path)) {
           for (const hop of result.path) {
-            const fromId = (hop as any).fromDeviceId ?? (hop as any).FromDeviceId;
+            const fromId =
+              (hop as any).fromDeviceId ?? (hop as any).FromDeviceId;
             const toId = (hop as any).toDeviceId ?? (hop as any).ToDeviceId;
             if (fromId != null) nodeIds.add(String(fromId));
             if (toId != null) nodeIds.add(String(toId));
@@ -143,7 +147,8 @@ const MainPage = () => {
         }
         if (Array.isArray(result.cables)) {
           for (const cable of result.cables) {
-            const fromId = (cable as any).fromDeviceId ?? (cable as any).FromDeviceId;
+            const fromId =
+              (cable as any).fromDeviceId ?? (cable as any).FromDeviceId;
             const toId = (cable as any).toDeviceId ?? (cable as any).ToDeviceId;
             if (fromId != null) nodeIds.add(String(fromId));
             if (toId != null) nodeIds.add(String(toId));
@@ -177,16 +182,25 @@ const MainPage = () => {
       traceResult: null,
       traceError: null,
       traceEdges: [],
-      layoutedNodes: state.layoutedNodes.map((n) => ({ ...n, selected: false })),
+      layoutedNodes: state.layoutedNodes.map((n) => ({
+        ...n,
+        selected: false,
+      })),
     });
   }, [state.layoutedNodes, updateMultipleStates]);
 
   // ────────────────── Aggregations ──────────────────
   const deviceStatusCounts = useMemo(
     () => ({
-      [DeviceStatus.Online]: state.devices.filter((d) => d.status === DeviceStatus.Online).length,
-      [DeviceStatus.Offline]: state.devices.filter((d) => d.status === DeviceStatus.Offline).length,
-      [DeviceStatus.Unstable]: state.devices.filter((d) => d.status === DeviceStatus.Unstable).length,
+      [DeviceStatus.Online]: state.devices.filter(
+        (d) => d.status === DeviceStatus.Online
+      ).length,
+      [DeviceStatus.Offline]: state.devices.filter(
+        (d) => d.status === DeviceStatus.Offline
+      ).length,
+      [DeviceStatus.Unstable]: state.devices.filter(
+        (d) => d.status === DeviceStatus.Unstable
+      ).length,
     }),
     [state.devices]
   );
@@ -216,11 +230,14 @@ const MainPage = () => {
         type: device.type?.toLowerCase() ?? "pc",
         status: device.status,
         showLabel: true,
-        mode: state.layoutMode,
+        //mode: state.layoutMode,
+        mode: "radial",
         // search only affects highlighting, not layout membership
         highlighted:
           !!state.searchQuery &&
-          (device.name.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
+          (device.name
+            .toLowerCase()
+            .includes(state.searchQuery.toLowerCase()) ||
             device.ipAddress.includes(state.searchQuery)),
       },
     }));
@@ -242,22 +259,31 @@ const MainPage = () => {
   }, [allNodes, state.currentZoomLevel, state.traceFilterNodes]);
 
   const baseEdges = useMemo(() => {
-    const isRadial = state.layoutMode === LayoutMode.Radial;
-    return mapCablesToEdges(state.cables, isRadial);
-  }, [state.cables, state.layoutMode]);
+    //   const isRadial = state.layoutMode === LayoutMode.Radial;
+    //   return mapCablesToEdges(state.cables, isRadial);
+    // }, [state.cables, state.layoutMode]);
+    return mapCablesToEdges(state.cables, true);
+  }, [state.cables]);
 
   /** Only edges connecting currently visible nodes */
   const layoutEdges = useMemo(() => {
     const nodeIds = new Set(zoomFilteredNodes.map((n) => n.id));
-    return baseEdges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    return baseEdges.filter(
+      (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
+    );
   }, [baseEdges, zoomFilteredNodes]);
 
   /** Layout + secondary alignment */
   const layoutResult = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
-    const calculated =
-      state.layoutMode === LayoutMode.Radial
-        ? getNewRadialLayoutedElements(zoomFilteredNodes, layoutEdges)
-        : getDagreLayoutedElements(zoomFilteredNodes, layoutEdges);
+    // const calculated =
+    //   state.layoutMode === LayoutMode.Radial
+    //     ? getNewRadialLayoutedElements(zoomFilteredNodes, layoutEdges)
+    //     : getDagreLayoutedElements(zoomFilteredNodes, layoutEdges);
+
+    const calculated = getNewRadialLayoutedElements(
+      zoomFilteredNodes,
+      layoutEdges
+    );
 
     const { nodes: alignedNodes } = alignNodesToCalculatedCenters(
       calculated.nodes,
@@ -265,7 +291,8 @@ const MainPage = () => {
     );
 
     return { nodes: alignedNodes, edges: calculated.edges as Edge[] };
-  }, [state.layoutMode, zoomFilteredNodes, layoutEdges]);
+    //}, [state.layoutMode, zoomFilteredNodes, layoutEdges]);
+  }, [zoomFilteredNodes, layoutEdges]);
 
   /** Search visibility: matched nodes + their cable neighbors (keeps structure) */
   const searchVisibleSet = useMemo(() => {
@@ -326,7 +353,9 @@ const MainPage = () => {
     (zoomLevel: number) => {
       updateState("currentZoomLevel", zoomLevel);
       if (window.location.hostname === "localhost") {
-        console.log(`[ZOOM] ${zoomLevel.toFixed(2)} hidePC=${zoomLevel < ZOOM_HIDE_PC}`);
+        console.log(
+          `[ZOOM] ${zoomLevel.toFixed(2)} hidePC=${zoomLevel < ZOOM_HIDE_PC}`
+        );
       }
     },
     [updateState]
@@ -353,7 +382,10 @@ const MainPage = () => {
       try {
         const result = await fetchTrace(device.deviceId);
         traceTimestampRef.current = Date.now();
-        const traceEdges = mapTraceCablesToEdges(result.cables, traceTimestampRef.current);
+        const traceEdges = mapTraceCablesToEdges(
+          result.cables,
+          traceTimestampRef.current
+        );
 
         updateMultipleStates({
           traceEdges,
@@ -361,7 +393,8 @@ const MainPage = () => {
           searchError: undefined,
         });
       } catch (err) {
-        const message = err instanceof Error ? err.message : "트레이스 로드 실패";
+        const message =
+          err instanceof Error ? err.message : "트레이스 로드 실패";
         updateState("traceError", message);
       }
     },
@@ -399,7 +432,9 @@ const MainPage = () => {
     try {
       const pingResults = await pingAllDevices();
       const updatedDevices = state.devices.map((device) => {
-        const pingResult = pingResults.find((p) => p.deviceId === device.deviceId);
+        const pingResult = pingResults.find(
+          (p) => p.deviceId === device.deviceId
+        );
         return pingResult
           ? {
               ...device,
@@ -419,12 +454,22 @@ const MainPage = () => {
         }))
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "전체 Ping 중 오류가 발생했습니다.";
+      const message =
+        err instanceof Error
+          ? err.message
+          : "전체 Ping 중 오류가 발생했습니다.";
       updateState("pingError", message);
     } finally {
       updateState("isPinging", false);
     }
-  }, [state.isPinging, state.devices, state.layoutedNodes, state.selectedDevice, updateState, updateMultipleStates]);
+  }, [
+    state.isPinging,
+    state.devices,
+    state.layoutedNodes,
+    state.selectedDevice,
+    updateState,
+    updateMultipleStates,
+  ]);
 
   const handleRefresh = useCallback(() => {
     updateState("pingError", null);
@@ -441,15 +486,19 @@ const MainPage = () => {
     updateState("layoutedNodes", nodesWithSelection);
   }, [layoutResult, state.selectedDevice, updateState]);
 
-  useEffect(() => {
-    setState((prev) => ({ ...prev, renderKey: prev.renderKey + 1 }));
-  }, [state.layoutMode]);
+  // 레이아웃 모드 변경시 리렌더링 (현재 모드 변경 비활성화)
+  // useEffect(() => {
+  //   setState((prev) => ({ ...prev, renderKey: prev.renderKey + 1 }));
+  // }, [state.layoutMode]);
 
   useEffect(() => {
     let isMounted = true;
     const loadInitialData = async () => {
       try {
-        const [deviceData, cableData] = await Promise.all([fetchDevices(), fetchCables()]);
+        const [deviceData, cableData] = await Promise.all([
+          fetchDevices(),
+          fetchCables(),
+        ]);
         if (isMounted) {
           updateMultipleStates({
             devices: deviceData,
@@ -458,19 +507,28 @@ const MainPage = () => {
           });
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "알 수 없는 오류입니다.";
+        const message =
+          err instanceof Error ? err.message : "알 수 없는 오류입니다.";
         if (isMounted) {
           updateMultipleStates({ error: message, loading: false });
         }
       }
     };
     loadInitialData();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [updateMultipleStates]);
 
   // ────────────────── Render ──────────────────
   if (state.loading) return <LoadingSpinner />;
-  if (state.error) return <ErrorState message={state.error} onRetry={() => window.location.reload()} />;
+  if (state.error)
+    return (
+      <ErrorState
+        message={state.error}
+        onRetry={() => window.location.reload()}
+      />
+    );
 
   return (
     <div className="h-screen flex flex-col bg-slate-100">
@@ -478,7 +536,9 @@ const MainPage = () => {
       <div className="border-b border-slate-200 shrink-0">
         <ControlBar
           onRefresh={handleRefresh}
-          onToggleProblemOnly={() => updateState("showProblemOnly", !state.showProblemOnly)}
+          onToggleProblemOnly={() =>
+            updateState("showProblemOnly", !state.showProblemOnly)
+          }
           showProblemOnly={state.showProblemOnly}
           searchQuery={state.searchQuery}
           onSearchChange={(value) =>
@@ -553,7 +613,9 @@ const MainPage = () => {
           setSelectedDevice={(device) => updateState("selectedDevice", device)}
           setSelectedCable={(cable) => updateState("selectedCable", cable)}
           filteredCables={filteredCables}
-          refetchDevices={async () => updateState("devices", await fetchDevices())}
+          refetchDevices={async () =>
+            updateState("devices", await fetchDevices())
+          }
           refetchCables={async () => updateState("cables", await fetchCables())}
           devices={state.devices}
         />

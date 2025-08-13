@@ -6,6 +6,7 @@ import type { EdgeProps } from "react-flow-renderer";
 
 const DEFAULT_W = 48;
 const DEFAULT_H = 72;
+//const RADIAL_USE_CURVE = true;
 
 function toNum(v: unknown, fallback: number) {
   if (typeof v === "number") return v;
@@ -54,20 +55,20 @@ function CustomEdge({
     // 조용히 폴백
   }
 
-  // 2) 모드/스타일 해석 (네 톤 유지)
+  // 2) 모드/스타일 해석 
   const mode = (data?.mode as string) ?? "hierarchical";
   const isTrace = isTruthyTrace(data?.isTrace);
   const baseStroke = toNum((style as any)?.strokeWidth, mode === "radial" ? 2.7 : 2.5);
   const hitStroke = baseStroke + 10;
   const shadowStroke = baseStroke + 2;
 
-  // 3) 곡선 path (네 curvature 그대로)
+  // 3) 곡선 path 
   const curvature = 0.25;
   const cx = sx + (tx - sx) * curvature;
   const cy = sy + (ty - sy) * curvature;
   const edgePath = `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`;
 
-  // 4) 렌더 (색/굵기/애니메이션 = 네 버전 그대로)
+  // 4) 렌더 
   return (
     <g>
       {/* 그림자 레이어 (방사형 전용) */}
