@@ -1,255 +1,185 @@
 // 📁 src/utils/edgeMapper.ts
-
 import type { Edge } from "react-flow-renderer";
 import type { CableDto } from "../types/cable";
 import type { CableEdge } from "../types/trace";
 
-/**
- * Edge Mapper Utilities
- * 
- * 네트워크 케이블 데이터를 React Flow의 Edge 객체로 변환하는 유틸리티 모듈입니다.
- * 다양한 케이블 타입(일반 케이블, 추적 케이블)을 시각적으로 구분하여 표현하고,
- * 레이아웃 모드에 따른 적절한 스타일링을 제공합니다.
- * 
- * 주요 기능:
- * - 일반 케이블 → 기본 연결선 변환
- * - 추적 케이블 → 강조된 애니메이션 연결선 변환
- * - 중복 케이블 필터링 (추적 시 기본 케이블 숨김)
- * - 레이아웃별 차별화된 스타일링 (계층형 vs 방사형)
- * 
- * @module EdgeMapper
- * @version 1.0.0
- */
+export const CABLE_EDGE_PREFIX = "cable-";
 
-// ================================
-// 일반 케이블 매핑 함수
-// ================================
+/* ---------------- helpers ---------------- */
 
-/**
- * 기본 케이블 데이터를 React Flow Edge 객체로 변환합니다.
- * 
- * 이 함수는 데이터베이스의 케이블 정보를 시각적 다이어그램 요소로 변환하여
- * 네트워크의 물리적 연결 관계를 표현합니다. 레이아웃 모드에 따라
- * 다른 렌더링 방식과 스타일을 적용합니다.
- * 
- * 변환 과정:
- * 1. 케이블 ID 기반 고유 식별자 생성
- * 2. 장비 ID를 문자열로 변환하여 노드 연결
- * 3. 레이아웃 모드별 스타일 및 핸들 설정
- * 4. 케이블 설명을 라벨로 추가
- * 
- * @param cables - 변환할 케이블 DTO 배열
- * @param isRadial - 방사형 레이아웃 사용 여부
- * @returns React Flow Edge 객체 배열
- * 
- * @example
- * ```typescript
- * const cables = [
- *   { cableId: 1, fromDeviceId: 10, toDeviceId: 20, description: "백본 연결" }
- * ];
- * const edges = mapCablesToEdges(cables, false);
- * // → [{ id: "cable-1", source: "10", target: "20", ... }]
- * ```
- * 
- * @remarks
- * 레이아웃별 차이점:
- * - **계층형 (Hierarchical)**: 검은색 실선, sourceHandle/targetHandle 포함
- * - **방사형 (Radial)**: 커스텀 엣지 타입 사용, 핸들 정보 제외
- */
-export function mapCablesToEdges(
-  cables: CableDto[],
-  isRadial: boolean
-): Edge[] {
-  // 입력 데이터 유효성 검사
+function undirectedKey(a: number | string, b: number | string) {
+  const A = String(a);
+  const B = String(b);
+  return A < B ? `${A}-${B}` : `${B}-${A}`;
+}
+const S = (v: number | string) => String(v);
+const toNum = (v: number | string) => (typeof v === "number" ? v : Number(v));
+
+/* -------- accept legacy PascalCase inputs (defensive) -------- */
+
+interface LegacyCableDto {
+  CableId: string | number;
+  FromDeviceId: number | string;
+  ToDeviceId: number | string;
+  Description?: string;
+}
+interface LegacyCableEdge {
+  CableId: string | number;
+  FromDeviceId: number | string;
+  ToDeviceId: number | string;
+  FromPortId: number | string;
+  ToPortId: number | string;
+}
+
+/** inputs we accept */
+type CableDtoInput = CableDto | LegacyCableDto;
+type CableEdgeInput = CableEdge | LegacyCableEdge;
+
+/** normalized shapes used internally */
+interface NormalizedCableDto {
+  cableId: string;
+  fromDeviceId: number;
+  toDeviceId: number;
+  description?: string;
+}
+interface NormalizedCableEdge {
+  cableId: string;
+  fromDeviceId: number;
+  toDeviceId: number;
+  fromPortId: number;
+  toPortId: number;
+}
+
+function normalizeCableDto(c: CableDtoInput): NormalizedCableDto {
+  if ("fromDeviceId" in c) {
+    return {
+      cableId: S(c.cableId),
+      fromDeviceId: toNum(c.fromDeviceId),
+      toDeviceId: toNum(c.toDeviceId),
+      description: c.description,
+    };
+  }
+  return {
+    cableId: S(c.CableId),
+    fromDeviceId: toNum(c.FromDeviceId),
+    toDeviceId: toNum(c.ToDeviceId),
+    description: c.Description,
+  };
+}
+
+function normalizeCableEdge(e: CableEdgeInput): NormalizedCableEdge {
+  if ("fromPortId" in e) {
+    return {
+      cableId: S(e.cableId),
+      fromDeviceId: toNum(e.fromDeviceId),
+      toDeviceId: toNum(e.toDeviceId),
+      fromPortId: toNum(e.fromPortId),
+      toPortId: toNum(e.toPortId),
+    };
+  }
+  return {
+    cableId: S(e.CableId),
+    fromDeviceId: toNum(e.FromDeviceId),
+    toDeviceId: toNum(e.ToDeviceId),
+    fromPortId: toNum(e.FromPortId),
+    toPortId: toNum(e.ToPortId),
+  };
+}
+
+/* ---------------- base edges ---------------- */
+
+export function mapCablesToEdges(cables: CableDtoInput[], isRadial: boolean): Edge[] {
   if (!Array.isArray(cables)) return [];
 
-  return cables.map((cable) => {
-    /**
-     * 기본 Edge 객체 구성
-     * 
-     * 모든 레이아웃에서 공통으로 사용되는 기본 속성들을 정의합니다.
-     * 각 케이블의 고유 특성을 반영하여 시각적 구분을 가능하게 합니다.
-     */
-    const baseEdge = {
-      /** 케이블 고유 식별자 (prefix로 타입 구분) */
-      id: `cable-${cable.cableId}`,
-      
-      /** 시작 노드 ID (장비 ID를 문자열로 변환) */
-      source: cable.fromDeviceId.toString(),
-      
-      /** 끝 노드 ID (장비 ID를 문자열로 변환) */
-      target: cable.toDeviceId.toString(),
-      
-      /** 
-       * Edge 타입 결정
-       * - 방사형: 커스텀 엣지 (CustomEdge 컴포넌트 사용)
-       * - 계층형: 기본 엣지 (React Flow 내장 스타일)
-       */
+  return cables.map((raw) => {
+    const c = normalizeCableDto(raw);
+    const sourceId = S(c.fromDeviceId);
+    const targetId = S(c.toDeviceId);
+
+    const base: Edge = {
+      id: `${CABLE_EDGE_PREFIX}${c.cableId}`,
+      source: sourceId,
+      target: targetId,
       type: isRadial ? "custom" : "default",
-      
-      /**
-       * 계층형 레이아웃 전용 스타일
-       * 방사형에서는 CustomEdge 컴포넌트가 스타일을 담당
-       */
-      style: isRadial ? undefined : { 
-        stroke: "#000",      // 검은색 연결선
-        strokeWidth: 2.2     // 적당한 굵기로 가독성 확보
-      },
-      
-      /** 케이블 설명을 라벨로 표시 (선택적) */
-      label: cable.description ?? "",
-      
-      /** 라벨 스타일링 */
+      style: isRadial ? undefined : { stroke: "#000", strokeWidth: 2.2 },
+      label: c.description ?? "",
       labelStyle: {
-        fontSize: 10,                    // 작은 폰트로 방해받지 않게
-        fontWeight: 500,                 // 중간 굵기로 가독성 확보
-        transform: "translateY(-8px)",   // 연결선 위쪽에 배치
+        fontSize: 10,
+        fontWeight: 500,
+        transform: "translateY(-8px)",
+        pointerEvents: "none",
       },
-      
-      /** 메타데이터 */
       data: {
-        /** 중복 검사용 키 (장비 ID 조합) */
-        key: `${cable.fromDeviceId}-${cable.toDeviceId}`,
-        
-        /** 레이아웃 모드 정보 (CustomEdge에서 스타일 결정에 사용) */
+        key: undirectedKey(sourceId, targetId),
         mode: isRadial ? "radial" : "hierarchical",
+        cableId: c.cableId,
+        fromDeviceId: sourceId,
+        toDeviceId: targetId,
       },
     };
 
-    /**
-     * 레이아웃별 핸들 정보 추가
-     * 
-     * 계층형 레이아웃에서는 노드의 특정 위치(핸들)에 연결선을 고정하여
-     * 정돈된 시각적 표현을 제공합니다. 방사형에서는 자유로운 연결을 위해
-     * 핸들 정보를 제외합니다.
-     */
     return isRadial
-      ? baseEdge  // 방사형: 기본 객체만 반환
-      : {
-          ...baseEdge,
-          /** 출발점 핸들 (노드 우측에서 시작) */
-          sourceHandle: "source",
-          /** 도착점 핸들 (노드 좌측으로 연결) */
-          targetHandle: "target",
-        };
+      ? base
+      : { ...base, sourceHandle: "source", targetHandle: "target" };
   });
 }
 
-// ================================
-// 추적 케이블 매핑 함수
-// ================================
-
-/**
- * 추적(Trace) 케이블을 강조된 Edge로 변환합니다.
- * 
- * 네트워크 경로 추적이나 장애 진단 시 특정 케이블 경로를 시각적으로
- * 강조하기 위한 특수 Edge를 생성합니다. 일반 케이블과 구별되는
- * 애니메이션 효과와 색상을 적용합니다.
- * 
- * 특징:
- * - 녹색 점선으로 추적 경로임을 시각적으로 구분
- * - 애니메이션 효과로 데이터 흐름 방향 표시
- * - 시간 기반 고유 ID로 동일 경로의 중복 추적 지원
- * - 포트 레벨의 상세 연결 정보 포함
- * 
- * @param cables - 추적할 케이블 엣지 배열
- * @param timestamp - 추적 시작 시각 (고유 ID 생성용)
- * @returns 강조된 React Flow Edge 객체 배열
- * 
- * @example
- * ```typescript
- * const traceCables = [
- *   { cableId: 1, fromDeviceId: 10, toDeviceId: 20, fromPortId: 1, toPortId: 2 }
- * ];
- * const traceEdges = mapTraceCablesToEdges(traceCables, Date.now());
- * ```
- */
+/* ---------------- trace edges ---------------- */
+/** return WITHOUT 'trace-' prefix; MainPage에서 최종 prefix 부여 */
 export function mapTraceCablesToEdges(
-  cables: CableEdge[],
-  timestamp: number
+  cables: CableEdgeInput[],
+  timestamp: number,
+  opts?: { mode?: "radial" | "hierarchical" }
 ): Edge[] {
-  return cables.map((cable, index) => ({
-    id: `trace-${cable.cableId}-${cable.fromPortId}-${cable.toPortId}-${timestamp}-${index}`,
-    source: cable.fromDeviceId.toString(),
-    target: cable.toDeviceId.toString(),
-    
-    // Radial 모드에서는 sourceHandle/targetHandle 제거
-    // sourceHandle: "source",
-    // targetHandle: "target",
-    
-    type: "custom", // ✅ 추가: radial에서 custom edge 사용
-    
-    style: {
-      stroke: "#10b981",
-      strokeDasharray: "5 5",
-      strokeWidth: 2,
-    },
-    
-    label: `${cable.fromDeviceId} to ${cable.toDeviceId}`,
-    animated: true,
-    
-    data: {
-      key: `${cable.fromDeviceId}-${cable.toDeviceId}`,
-      isTrace: true,
-      mode: "radial", // ✅ 추가: 모드 정보
-    },
-  }));
+  const mode = opts?.mode ?? "radial";
+
+  return (cables ?? []).map((raw, index) => {
+    const c = normalizeCableEdge(raw);
+    const fromId = S(c.fromDeviceId);
+    const toId = S(c.toDeviceId);
+
+    return {
+      id: `${c.cableId}-${c.fromPortId}-${c.toPortId}-${timestamp}-${index}`,
+      source: fromId,
+      target: toId,
+      type: "custom",
+      style: { stroke: "#10b981", strokeDasharray: "5 5", strokeWidth: 2 },
+      label: `${fromId} → ${toId}`,
+      animated: true,
+      data: {
+        key: undirectedKey(fromId, toId),
+        isTrace: true,
+        mode,
+        cableId: c.cableId,
+        fromDeviceId: fromId,
+        toDeviceId: toId,
+        fromPortId: S(c.fromPortId),
+        toPortId: S(c.toPortId),
+      },
+    };
+  });
 }
 
-// ================================
-// 중복 케이블 필터링 함수
-// ================================
+/* ---------------- overlap filter ---------------- */
+/** prefer cableId match; fallback to undirected from-to key */
+export function excludeTraceOverlaps(baseEdges: Edge[], traceEdges: Edge[]): Edge[] {
+  const traceCableIds = new Set<string>();
+  const traceKeys = new Set<string>();
 
-/**
- * 추적 케이블과 중복되는 기본 케이블 Edge를 제거합니다.
- * 
- * 네트워크 추적 시 동일한 물리적 케이블이 일반 연결과 추적 연결로
- * 중복 표시되는 것을 방지합니다. 추적 케이블이 우선 표시되고,
- * 해당 경로의 일반 케이블은 숨겨집니다.
- * 
- * 작동 원리:
- * 1. 추적 케이블들의 키(장비 ID 조합) 집합 생성
- * 2. 기본 케이블 중 동일한 키를 가진 항목 제외
- * 3. 중복되지 않는 기본 케이블만 반환
- * 
- * @param baseEdges - 필터링할 기본 케이블 Edge 배열
- * @param traceEdges - 우선 표시할 추적 케이블 Edge 배열
- * @returns 중복이 제거된 기본 케이블 Edge 배열
- * 
- * @example
- * ```typescript
- * const baseEdges = [
- *   { id: "cable-1", data: { key: "10-20" } },
- *   { id: "cable-2", data: { key: "20-30" } }
- * ];
- * const traceEdges = [
- *   { id: "trace-1", data: { key: "10-20" } }
- * ];
- * 
- * const filtered = excludeTraceOverlaps(baseEdges, traceEdges);
- * // → [{ id: "cable-2", data: { key: "20-30" } }]
- * ```
- * 
- * @performance
- * Set을 사용한 O(1) 룩업으로 대용량 네트워크에서도 효율적 처리
- */
-export function excludeTraceOverlaps(
-  baseEdges: Edge[],
-  traceEdges: Edge[]
-): Edge[] {
-  /**
-   * 추적 케이블 키 집합 생성
-   * 
-   * Set 자료구조를 사용하여 중복 검사 시 O(1) 시간 복잡도로
-   * 빠른 필터링을 제공합니다.
-   */
-  const traceKeySet = new Set(traceEdges.map((edge) => edge.data?.key));
-  
-  /**
-   * 중복되지 않는 기본 케이블만 필터링
-   * 
-   * 각 기본 케이블의 키가 추적 케이블 집합에 존재하지 않는
-   * 경우에만 결과에 포함시킵니다.
-   */
-  return baseEdges.filter((edge) => !traceKeySet.has(edge.data?.key));
+  for (const te of traceEdges) {
+    const d = te.data as Record<string, unknown> | undefined;
+    const cid = typeof d?.cableId === "string" ? d.cableId : undefined;
+    const k = typeof d?.key === "string" ? d.key : undefined;
+    if (cid) traceCableIds.add(cid);
+    if (k) traceKeys.add(k);
+  }
+
+  return baseEdges.filter((be) => {
+    const d = be.data as Record<string, unknown> | undefined;
+    const baseCid = typeof d?.cableId === "string" ? d.cableId : undefined;
+    if (baseCid && traceCableIds.has(baseCid)) return false;
+    const baseKey = typeof d?.key === "string" ? d.key : undefined;
+    if (baseKey && traceKeys.has(baseKey)) return false;
+    return true;
+  });
 }

@@ -41,3 +41,19 @@ docs/
 # etc
 .cache/
 *.tgz
+
+# backend build outputs
+server/bin/
+server/obj/
+
+# Visual Studio
+.vs/
+
+# Rider / Resharper
+_ReSharper.Caches/
+
+# EF Core Migrations Snapshots (optional, if generated)
+*.dbmdl
+
+# Windows junk
+Thumbs.db

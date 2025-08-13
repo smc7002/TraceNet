@@ -31,8 +31,8 @@ export default function ControlBar({
   statusCounts,
   onPingAll,
   isPinging,
-  keyboardNavEnabled,
-  onToggleKeyboardNav,
+  //keyboardNavEnabled,
+  //onToggleKeyboardNav,
   searchError,
 }: ControlBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -139,7 +139,7 @@ export default function ControlBar({
       </button>
 
       {/* 🆕 키보드 네비게이션 토글 버튼 */}
-      <button
+      {/* <button
         onClick={onToggleKeyboardNav}
         disabled={isPinging}
         className={`px-3 py-2 rounded-md text-sm border ${
@@ -149,7 +149,7 @@ export default function ControlBar({
         } disabled:opacity-50 disabled:cursor-not-allowed transition`}
       >
         🎮 키보드
-      </button>
+      </button> */}
 
       <button
         onClick={onRefresh}

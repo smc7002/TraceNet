@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// 📁 src/pages/MainPage.tsx
+// src/pages/MainPage.tsx – stabilized layout & search visibility
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { fetchDevices } from "../api/deviceApi";
@@ -19,6 +19,7 @@ import {
   mapCablesToEdges,
   mapTraceCablesToEdges,
   excludeTraceOverlaps,
+  CABLE_EDGE_PREFIX,
 } from "../utils/edgeMapper";
 import type { Node, Edge } from "react-flow-renderer";
 
@@ -31,472 +32,530 @@ import CustomNode from "../components/CustomNode";
 import CustomEdge from "../utils/CustomEdge";
 import { alignNodesToCalculatedCenters } from "../utils/nodeCenterCalculator";
 
+// Component config
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
+const ZOOM_HIDE_PC = 0.7;
 
-const ZOOM_HIDE_PC = 0.7; // PC 노드 숨김 임계값
+interface AppState {
+  devices: Device[];
+  cables: CableDto[];
+
+  selectedDevice: Device | null;
+  selectedCable: CableDto | null;
+
+  traceResult: TraceResponse | null;
+  traceEdges: Edge[];
+  traceError: string | null;
+  traceFilterNodes: Set<string> | null;
+
+  layoutMode: LayoutMode;
+  searchQuery: string;
+  showProblemOnly: boolean;
+  loading: boolean;
+  error: string;
+  renderKey: number;
+
+  isPinging: boolean;
+  pingError: string | null;
+  searchError: string | undefined;
+  currentZoomLevel: number;
+  keyboardNavEnabled: boolean;
+  layoutedNodes: Node[];
+}
+
+const initialState: AppState = {
+  devices: [],
+  cables: [],
+  selectedDevice: null,
+  selectedCable: null,
+  traceResult: null,
+  traceEdges: [],
+  traceError: null,
+  traceFilterNodes: null,
+  layoutMode: LayoutMode.Radial,
+  searchQuery: "",
+  showProblemOnly: false,
+  loading: true,
+  error: "",
+  renderKey: 0,
+  isPinging: false,
+  pingError: null,
+  searchError: undefined,
+  currentZoomLevel: 1.0,
+  keyboardNavEnabled: true,
+  layoutedNodes: [],
+};
 
 const MainPage = () => {
-  // 데이터 상태
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [allCables, setAllCables] = useState<CableDto[]>([]);
-
-  // 선택 상태
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-  const [selectedCable, setSelectedCable] = useState<CableDto | null>(null);
-
-  // 트레이스 상태
-  const [traceResult, setTraceResult] = useState<TraceResponse | null>(null);
-  const [traceEdges, setTraceEdges] = useState<Edge[]>([]);
-  const [traceError, setTraceError] = useState<string | null>(null);
-
-  // UI 상태
-  const [layoutMode] = useState<LayoutMode>(LayoutMode.Radial);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showProblemOnly, setShowProblemOnly] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [renderKey, setRenderKey] = useState(0);
-
-  // Ping 관련
-  const [isPinging, setIsPinging] = useState(false);
-  const [pingError, setPingError] = useState<string | null>(null);
-
-  // 검색 에러 상태
-  const [searchError, setSearchError] = useState<string | undefined>(undefined);
-
-  // 줌 레벨
-  const [currentZoomLevel, setCurrentZoomLevel] = useState(1.0);
-
-  // 기타 설정
-  const [keyboardNavEnabled, setKeyboardNavEnabled] = useState(true);
+  const [state, setState] = useState<AppState>(initialState);
   const traceTimestampRef = useRef<number>(0);
-  const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
 
-  const [traceFilterNodes, setTraceFilterNodes] = useState<Set<string> | null>(
-    null
+  const updateState = useCallback(<K extends keyof AppState>(key: K, value: AppState[K]) => {
+    setState((prev) => ({ ...prev, [key]: value }));
+  }, []);
+  const updateMultipleStates = useCallback((updates: Partial<AppState>) => {
+    setState((prev) => ({ ...prev, ...updates }));
+  }, []);
+
+  // ────────────────── Search & Trace ──────────────────
+  const executeDeviceSearch = useCallback(
+    async (query: string, devices: Device[]) => {
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery) {
+        updateMultipleStates({
+          traceFilterNodes: null,
+          traceEdges: [],
+          traceResult: null,
+          searchError: undefined,
+        });
+        return;
+      }
+
+      const matchedDevice = devices.find(
+        (d) =>
+          d.name.toLowerCase() === trimmedQuery.toLowerCase() ||
+          d.ipAddress === trimmedQuery
+      );
+
+      if (!matchedDevice) {
+        updateMultipleStates({
+          traceFilterNodes: null,
+          traceEdges: [],
+          traceResult: null,
+          searchError: `'${trimmedQuery}' 장비를 찾을 수 없습니다.`,
+        });
+        return;
+      }
+
+      try {
+        const result = await fetchTrace(matchedDevice.deviceId);
+
+        // collect nodes on path
+        const nodeIds = new Set<string>();
+        if (Array.isArray(result.path)) {
+          for (const hop of result.path) {
+            const fromId = (hop as any).fromDeviceId ?? (hop as any).FromDeviceId;
+            const toId = (hop as any).toDeviceId ?? (hop as any).ToDeviceId;
+            if (fromId != null) nodeIds.add(String(fromId));
+            if (toId != null) nodeIds.add(String(toId));
+          }
+        }
+        if (Array.isArray(result.cables)) {
+          for (const cable of result.cables) {
+            const fromId = (cable as any).fromDeviceId ?? (cable as any).FromDeviceId;
+            const toId = (cable as any).toDeviceId ?? (cable as any).ToDeviceId;
+            if (fromId != null) nodeIds.add(String(fromId));
+            if (toId != null) nodeIds.add(String(toId));
+          }
+        }
+        nodeIds.add(String(matchedDevice.deviceId));
+
+        updateMultipleStates({
+          traceFilterNodes: nodeIds,
+          traceEdges: mapTraceCablesToEdges(result.cables, Date.now()),
+          traceResult: result,
+          searchError: undefined,
+        });
+      } catch (err) {
+        console.error("트레이스 실행 실패:", err);
+        updateMultipleStates({
+          traceFilterNodes: null,
+          traceEdges: [],
+          traceResult: null,
+          searchError: "Trace 정보를 불러오지 못했습니다.",
+        });
+      }
+    },
+    [updateMultipleStates]
   );
 
-  // 줌 레벨 변경 시 PC 노드 숨김 처리
-  const handleZoomChange = useCallback((zoomLevel: number) => {
-    setCurrentZoomLevel(zoomLevel);
-    if (window.location.hostname === "localhost") {
-      console.log(
-        `[ZOOM] ${zoomLevel.toFixed(2)} hidePC=${zoomLevel < ZOOM_HIDE_PC}`
-      );
-    }
-  }, []);
-
-  // 모든 선택 및 트레이스 초기화
-  const resetSelections = useCallback(() => {
-    setSelectedDevice(null);
-    setSelectedCable(null);
-    setTraceResult(null);
-    setTraceError(null);
-    setTraceEdges([]); // 케이블 애니메이션 해제
-    setLayoutedNodes((prev) => prev.map((n) => ({ ...n, selected: false })));
-  }, []);
-
-  // 레이아웃 모드 변경 시 리렌더링
-  useEffect(() => {
-    setRenderKey((prev) => prev + 1);
-  }, [layoutMode]);
-
-  useEffect(() => {
-    if (!selectedDevice) {
-      // 선택 해제 시 트레이스 유지(화면 안정성)
-    }
-  }, [selectedDevice]);
-
-  // 검색 및 문제 장비 필터링
-  const filteredDevices = useMemo(() => {
-    return devices.filter((d) => {
-      const matchSearch =
-        d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        d.ipAddress.includes(searchQuery);
-      const matchStatus = showProblemOnly
-        ? d.status === "Offline" || d.status === "Unstable"
-        : true;
-      return matchSearch && matchStatus;
+  const resetAllSelections = useCallback(() => {
+    updateMultipleStates({
+      selectedDevice: null,
+      selectedCable: null,
+      traceResult: null,
+      traceError: null,
+      traceEdges: [],
+      layoutedNodes: state.layoutedNodes.map((n) => ({ ...n, selected: false })),
     });
-  }, [devices, searchQuery, showProblemOnly]);
+  }, [state.layoutedNodes, updateMultipleStates]);
 
-  // 케이블 검색 필터링
+  // ────────────────── Aggregations ──────────────────
+  const deviceStatusCounts = useMemo(
+    () => ({
+      [DeviceStatus.Online]: state.devices.filter((d) => d.status === DeviceStatus.Online).length,
+      [DeviceStatus.Offline]: state.devices.filter((d) => d.status === DeviceStatus.Offline).length,
+      [DeviceStatus.Unstable]: state.devices.filter((d) => d.status === DeviceStatus.Unstable).length,
+    }),
+    [state.devices]
+  );
+
+  // ────────────────── Filters (for side panel) ──────────────────
   const filteredCables = useMemo(() => {
-    return allCables.filter((c) => {
-      const q = searchQuery.toLowerCase();
-      return (
-        c.cableId.toLowerCase().includes(q) ||
-        c.description?.toLowerCase().includes(q) ||
-        c.fromDevice.toLowerCase().includes(q) ||
-        c.toDevice.toLowerCase().includes(q)
-      );
-    });
-  }, [allCables, searchQuery]);
+    const query = state.searchQuery.toLowerCase();
+    return state.cables.filter(
+      (cable) =>
+        cable.cableId.toLowerCase().includes(query) ||
+        cable.description?.toLowerCase().includes(query) ||
+        cable.fromDevice.toLowerCase().includes(query) ||
+        cable.toDevice.toLowerCase().includes(query)
+    );
+  }, [state.cables, state.searchQuery]);
 
-  // 장비 데이터를 노드로 변환
+  // ────────────────── Nodes & Edges (React Flow) ──────────────────
+
+  /** Build ALL nodes (no filtering here!) – filtering is applied only at the final render step */
   const allNodes: Node[] = useMemo(() => {
-    return devices.map((device) => ({
+    return state.devices.map((device) => ({
       id: `${device.deviceId}`,
       type: "custom",
       position: { x: 0, y: 0 },
       data: {
         label: device.name,
-        type: device.type.toLowerCase(),
+        type: device.type?.toLowerCase() ?? "pc",
         status: device.status,
         showLabel: true,
-        mode: layoutMode,
-        // 검색어 하이라이트
+        mode: state.layoutMode,
+        // search only affects highlighting, not layout membership
         highlighted:
-          searchQuery.length > 0 &&
-          (device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            device.ipAddress.includes(searchQuery)),
+          !!state.searchQuery &&
+          (device.name.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
+            device.ipAddress.includes(state.searchQuery)),
       },
     }));
-  }, [devices, searchQuery, layoutMode]);
+  }, [state.devices, state.searchQuery, state.layoutMode]);
 
-  // 레이아웃 계산용: 줌 기준 1차 필터(트레이스 필터 적용 X)
+  /** Zoom-based PC hiding; during trace focus show all */
   const zoomFilteredNodes = useMemo(() => {
-    if (currentZoomLevel < ZOOM_HIDE_PC) {
+    if (state.traceFilterNodes) return allNodes;
+    if (state.currentZoomLevel < ZOOM_HIDE_PC) {
       const filtered = allNodes.filter((n) =>
         ["server", "switch", "router"].includes(n.data?.type)
       );
       if (window.location.hostname === "localhost") {
-        console.log(`hide PC: ${allNodes.length} -> ${filtered.length}`);
+        console.log(`PC 노드 숨김: ${allNodes.length} -> ${filtered.length}`);
       }
       return filtered;
     }
     return allNodes;
-  }, [allNodes, currentZoomLevel]);
+  }, [allNodes, state.currentZoomLevel, state.traceFilterNodes]);
 
-  // 검색 실행 함수
-  const handleSearchSubmit = useCallback(async () => {
-    const q = searchQuery.trim();
-    if (!q) {
-      // 입력이 비었으면 전체 복구
-      setTraceFilterNodes(null);
-      setTraceEdges([]);
-      setTraceResult(null);
-      setSearchError(undefined); // 🆕 에러 해제
-      return;
-    }
+  const baseEdges = useMemo(() => {
+    const isRadial = state.layoutMode === LayoutMode.Radial;
+    return mapCablesToEdges(state.cables, isRadial);
+  }, [state.cables, state.layoutMode]);
 
-    // 정확 매칭 우선 (이름 대소문자 무시, 또는 IP 완전일치)
-    const matched = devices.find(
-      (d) => d.name.toLowerCase() === q.toLowerCase() || d.ipAddress === q
-    );
+  /** Only edges connecting currently visible nodes */
+  const layoutEdges = useMemo(() => {
+    const nodeIds = new Set(zoomFilteredNodes.map((n) => n.id));
+    return baseEdges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+  }, [baseEdges, zoomFilteredNodes]);
 
-    if (!matched) {
-      // 🆕 존재하지 않음 → 에러 노출
-      setTraceFilterNodes(null);
-      setTraceEdges([]);
-      setTraceResult(null);
-      setSearchError(`'${q}' 장비를 찾을 수 없습니다.`);
-      return;
-    }
-
-    try {
-      const result = await fetchTrace(matched.deviceId);
-
-      // 🆕 from/to 양쪽 다 모아 필터셋 구성 + 시작 장비 안전 포함
-      const nodeIds = new Set<string>();
-      if (Array.isArray(result.path)) {
-        for (const hop of result.path) {
-          const fromId = (hop.fromDeviceId ?? (hop as any).FromDeviceId) as
-            | number
-            | undefined;
-          const toId = (hop.toDeviceId ?? (hop as any).ToDeviceId) as
-            | number
-            | undefined;
-          if (fromId != null) nodeIds.add(String(fromId));
-          if (toId != null) nodeIds.add(String(toId));
-        }
-      }
-      if (Array.isArray(result.cables)) {
-        for (const c of result.cables) {
-          const fromId = (c.fromDeviceId ?? (c as any).FromDeviceId) as
-            | number
-            | undefined;
-          const toId = (c.toDeviceId ?? (c as any).ToDeviceId) as
-            | number
-            | undefined;
-          if (fromId != null) nodeIds.add(String(fromId));
-          if (toId != null) nodeIds.add(String(toId));
-        }
-      }
-      nodeIds.add(String(matched.deviceId)); // 시작 장비 강제 포함
-
-      setTraceFilterNodes(nodeIds);
-      setTraceEdges(mapTraceCablesToEdges(result.cables, Date.now()));
-      setTraceResult(result);
-      setSearchError(undefined); // 🆕 성공 시 에러 해제
-    } catch (err) {
-      console.error(err);
-      setTraceFilterNodes(null);
-      setTraceEdges([]);
-      setTraceResult(null);
-      setSearchError("Trace 정보를 불러오지 못했습니다.");
-    }
-  }, [searchQuery, devices]);
-
-  // 케이블을 엣지로 변환 (베이스)
-  const pureBaseEdges = useMemo(() => {
-    const isRadial = layoutMode === LayoutMode.Radial;
-    return mapCablesToEdges(allCables, isRadial);
-  }, [allCables, layoutMode]);
-
-  // 레이아웃 계산용 엣지 (트레이스 제외로 안정성 확보)
-  const baseEdgesForLayout = useMemo(() => {
-    const ids = new Set(zoomFilteredNodes.map((n) => n.id));
-    return pureBaseEdges.filter((e) => ids.has(e.source) && ids.has(e.target));
-  }, [pureBaseEdges, zoomFilteredNodes]);
-
-  // 안정적인 레이아웃 계산 (트레이스 변경에 영향받지 않음)
+  /** Layout + secondary alignment */
   const layoutResult = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
-    const base =
-      layoutMode === LayoutMode.Radial
-        ? getNewRadialLayoutedElements(zoomFilteredNodes, baseEdgesForLayout)
-        : getDagreLayoutedElements(zoomFilteredNodes, baseEdgesForLayout);
+    const calculated =
+      state.layoutMode === LayoutMode.Radial
+        ? getNewRadialLayoutedElements(zoomFilteredNodes, layoutEdges)
+        : getDagreLayoutedElements(zoomFilteredNodes, layoutEdges);
 
     const { nodes: alignedNodes } = alignNodesToCalculatedCenters(
-      base.nodes,
-      base.edges
+      calculated.nodes,
+      calculated.edges
     );
 
-    return { nodes: alignedNodes, edges: base.edges as Edge[] };
-  }, [layoutMode, zoomFilteredNodes, baseEdgesForLayout]);
+    return { nodes: alignedNodes, edges: calculated.edges as Edge[] };
+  }, [state.layoutMode, zoomFilteredNodes, layoutEdges]);
 
-  // 선택 상태만 반영 (노드 위치는 고정)
-  useEffect(() => {
-    const nodesWithSelection: Node[] = layoutResult.nodes.map((node) => ({
-      ...node,
-      selected: selectedDevice?.deviceId.toString() === node.id,
-    }));
-    setLayoutedNodes(nodesWithSelection);
-  }, [layoutResult, selectedDevice]);
+  /** Search visibility: matched nodes + their cable neighbors (keeps structure) */
+  const searchVisibleSet = useMemo(() => {
+    const q = state.searchQuery.trim().toLowerCase();
+    if (!q) return null;
 
-  // 초기 데이터 로드
-  useEffect(() => {
-    let isMounted = true;
-    const load = async () => {
-      try {
-        const [deviceData, cableData] = await Promise.all([
-          fetchDevices(),
-          fetchCables(),
-        ]);
-        if (isMounted) {
-          setDevices(deviceData);
-          setAllCables(cableData);
-        }
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "알 수 없는 오류입니다.";
-        if (isMounted) setError(msg);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-    load();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    const matched = new Set(
+      state.devices
+        .filter(
+          (d) =>
+            d.name.toLowerCase().includes(q) ||
+            d.ipAddress.includes(state.searchQuery)
+        )
+        .map((d) => String(d.deviceId))
+    );
 
-  // ✅ 표시용 최종 노드: 레이아웃 좌표는 유지하고 trace 필터만 적용
+    // also include neighbors via cables
+    state.cables.forEach((c) => {
+      const a = String(c.fromDeviceId);
+      const b = String(c.toDeviceId);
+      if (matched.has(a)) matched.add(b);
+      if (matched.has(b)) matched.add(a);
+    });
+
+    return matched;
+  }, [state.searchQuery, state.devices, state.cables]);
+
+  /** Final nodes (apply trace filter and search visibility only here) */
   const finalNodes = useMemo(() => {
-    if (!traceFilterNodes) return layoutedNodes;
-    const idset = traceFilterNodes;
-    return layoutedNodes.filter((n) => idset.has(n.id));
-  }, [layoutedNodes, traceFilterNodes]);
-
-  // 전체 장비 Ping 실행
-  const handlePingAll = useCallback(async () => {
-    if (isPinging) return;
-    setIsPinging(true);
-    setPingError(null);
-    try {
-      const pingResults = await pingAllDevices();
-      setDevices((prev) =>
-        prev.map((d) => {
-          const pr = pingResults.find((p) => p.deviceId === d.deviceId);
-          return pr
-            ? {
-                ...d,
-                status: pr.status as Device["status"],
-                lastCheckedAt: pr.checkedAt,
-              }
-            : d;
-        })
-      );
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "전체 Ping 중 오류가 발생했습니다.";
-      setPingError(message);
-    } finally {
-      setIsPinging(false);
+    let nodes = state.layoutedNodes;
+    if (state.traceFilterNodes) {
+      nodes = nodes.filter((n) => state.traceFilterNodes!.has(n.id));
     }
-  }, [isPinging]);
+    if (searchVisibleSet) {
+      nodes = nodes.filter((n) => searchVisibleSet.has(n.id));
+    }
+    return nodes;
+  }, [state.layoutedNodes, state.traceFilterNodes, searchVisibleSet]);
 
-  // 렌더링용 엣지 (PC 숨김 + 트레이스 포함)
-  const smartFilteredEdges = useMemo(() => {
+  /** Final edges aligned to final nodes; add trace edges after overlap removal */
+  const finalEdges = useMemo(() => {
     const nodeIds = new Set(finalNodes.map((n) => n.id));
-    const baseFiltered = pureBaseEdges.filter(
+    const baseFiltered = baseEdges.filter(
       (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
     );
-    const traceFiltered = traceEdges.filter(
+    const traceFiltered = state.traceEdges.filter(
       (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
     );
     return [
       ...excludeTraceOverlaps(baseFiltered, traceFiltered),
       ...traceFiltered.map((e) => ({ ...e, id: `trace-${e.id}` })),
     ];
-  }, [pureBaseEdges, traceEdges, finalNodes]);
+  }, [baseEdges, state.traceEdges, finalNodes]);
 
-  // 노드 클릭 시 트레이스 실행
-  const handleDeviceClick = useCallback(async (device: Device) => {
-    setSelectedDevice(device);
-    setTraceResult(null);
-    setTraceError(null);
+  // ────────────────── Handlers ──────────────────
 
-    if (device.type.toLowerCase() === "server") {
-      alert("🔒 서버는 트레이스 대상이 아닙니다.");
-      return;
-    }
-
-    try {
-      const result = await fetchTrace(device.deviceId);
-      traceTimestampRef.current = Date.now();
-      const trace = mapTraceCablesToEdges(
-        result.cables,
-        traceTimestampRef.current
-      );
-      setTraceEdges(trace); // 새 트레이스로 교체
-      setTraceResult(result);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "트레이스 로드 실패";
-      setTraceError(msg);
-    }
-  }, []);
-
-  // 엣지 클릭 시 케이블 선택
-  const handleEdgeClick = useCallback(
-    (_: unknown, edge: Edge) => {
-      const cableId = edge.id.replace("cable-", "");
-      const found = allCables.find((c) => c.cableId === cableId);
-      if (found) {
-        setSelectedCable(found);
-        resetSelections();
+  const handleZoomChange = useCallback(
+    (zoomLevel: number) => {
+      updateState("currentZoomLevel", zoomLevel);
+      if (window.location.hostname === "localhost") {
+        console.log(`[ZOOM] ${zoomLevel.toFixed(2)} hidePC=${zoomLevel < ZOOM_HIDE_PC}`);
       }
     },
-    [allCables, resetSelections]
+    [updateState]
   );
 
-  // 페이지 새로고침
-  const handleRefresh = useCallback(() => {
-    setPingError(null);
-    window.location.reload();
-  }, []);
+  const handleSearchSubmit = useCallback(async () => {
+    await executeDeviceSearch(state.searchQuery, state.devices);
+  }, [state.searchQuery, state.devices, executeDeviceSearch]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error)
-    return (
-      <ErrorState message={error} onRetry={() => window.location.reload()} />
-    );
+  const handleDeviceClick = useCallback(
+    async (device: Device) => {
+      updateState("selectedDevice", device);
+      updateMultipleStates({
+        selectedCable: null,
+        traceResult: null,
+        traceError: null,
+      });
+
+      if (device.type?.toLowerCase() === "server") {
+        updateState("searchError", "서버는 트레이스 대상이 아닙니다.");
+        return;
+      }
+
+      try {
+        const result = await fetchTrace(device.deviceId);
+        traceTimestampRef.current = Date.now();
+        const traceEdges = mapTraceCablesToEdges(result.cables, traceTimestampRef.current);
+
+        updateMultipleStates({
+          traceEdges,
+          traceResult: result,
+          searchError: undefined,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "트레이스 로드 실패";
+        updateState("traceError", message);
+      }
+    },
+    [updateState, updateMultipleStates]
+  );
+
+  const handleEdgeClick = useCallback(
+    (_: unknown, edge: Edge) => {
+      const id = edge.id;
+      // Only cable edges open cable detail
+      const isCable = id.startsWith(CABLE_EDGE_PREFIX);
+      if (!isCable) return;
+
+      const cableId = id.slice(CABLE_EDGE_PREFIX.length);
+      const foundCable = state.cables.find((c) => c.cableId === cableId);
+      if (foundCable) {
+        updateMultipleStates({
+          selectedCable: foundCable,
+          selectedDevice: null,
+          // keep cable selection; clear trace visuals
+          traceResult: null,
+          traceError: null,
+          traceEdges: [],
+        });
+      }
+    },
+    [state.cables, updateMultipleStates]
+  );
+
+  const handlePingAll = useCallback(async () => {
+    if (state.isPinging) return;
+
+    updateMultipleStates({ isPinging: true, pingError: null });
+
+    try {
+      const pingResults = await pingAllDevices();
+      const updatedDevices = state.devices.map((device) => {
+        const pingResult = pingResults.find((p) => p.deviceId === device.deviceId);
+        return pingResult
+          ? {
+              ...device,
+              status: pingResult.status as Device["status"],
+              lastCheckedAt: pingResult.checkedAt,
+            }
+          : device;
+      });
+      updateState("devices", updatedDevices);
+
+      // keep selection highlight consistent after ping
+      updateState(
+        "layoutedNodes",
+        state.layoutedNodes.map((n) => ({
+          ...n,
+          selected: state.selectedDevice?.deviceId.toString() === n.id,
+        }))
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "전체 Ping 중 오류가 발생했습니다.";
+      updateState("pingError", message);
+    } finally {
+      updateState("isPinging", false);
+    }
+  }, [state.isPinging, state.devices, state.layoutedNodes, state.selectedDevice, updateState, updateMultipleStates]);
+
+  const handleRefresh = useCallback(() => {
+    updateState("pingError", null);
+    window.location.reload();
+  }, [updateState]);
+
+  // ────────────────── Effects ──────────────────
+
+  useEffect(() => {
+    const nodesWithSelection: Node[] = layoutResult.nodes.map((node) => ({
+      ...node,
+      selected: state.selectedDevice?.deviceId.toString() === node.id,
+    }));
+    updateState("layoutedNodes", nodesWithSelection);
+  }, [layoutResult, state.selectedDevice, updateState]);
+
+  useEffect(() => {
+    setState((prev) => ({ ...prev, renderKey: prev.renderKey + 1 }));
+  }, [state.layoutMode]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadInitialData = async () => {
+      try {
+        const [deviceData, cableData] = await Promise.all([fetchDevices(), fetchCables()]);
+        if (isMounted) {
+          updateMultipleStates({
+            devices: deviceData,
+            cables: cableData,
+            loading: false,
+          });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "알 수 없는 오류입니다.";
+        if (isMounted) {
+          updateMultipleStates({ error: message, loading: false });
+        }
+      }
+    };
+    loadInitialData();
+    return () => { isMounted = false; };
+  }, [updateMultipleStates]);
+
+  // ────────────────── Render ──────────────────
+  if (state.loading) return <LoadingSpinner />;
+  if (state.error) return <ErrorState message={state.error} onRetry={() => window.location.reload()} />;
 
   return (
     <div className="h-screen flex flex-col bg-slate-100">
-      {/* 상단 제어 패널 */}
+      {/* Top control bar */}
       <div className="border-b border-slate-200 shrink-0">
         <ControlBar
           onRefresh={handleRefresh}
-          onToggleProblemOnly={() => setShowProblemOnly((prev) => !prev)}
-          showProblemOnly={showProblemOnly}
-          searchQuery={searchQuery}
-          onSearchChange={(v) => {
-            setSearchQuery(v);
-            setSearchError(undefined);
-          }}
+          onToggleProblemOnly={() => updateState("showProblemOnly", !state.showProblemOnly)}
+          showProblemOnly={state.showProblemOnly}
+          searchQuery={state.searchQuery}
+          onSearchChange={(value) =>
+            updateMultipleStates({ searchQuery: value, searchError: undefined })
+          }
           onSearchSubmit={handleSearchSubmit}
-          statusCounts={{
-            [DeviceStatus.Online]: devices.filter(
-              (d) => d.status === DeviceStatus.Online
-            ).length,
-            [DeviceStatus.Offline]: devices.filter(
-              (d) => d.status === DeviceStatus.Offline
-            ).length,
-            [DeviceStatus.Unstable]: devices.filter(
-              (d) => d.status === DeviceStatus.Unstable
-            ).length,
-          }}
+          statusCounts={deviceStatusCounts}
           onPingAll={handlePingAll}
-          isPinging={isPinging}
-          keyboardNavEnabled={keyboardNavEnabled}
-          onToggleKeyboardNav={() => setKeyboardNavEnabled((prev) => !prev)}
-          searchError={searchError}
+          isPinging={state.isPinging}
+          keyboardNavEnabled={state.keyboardNavEnabled}
+          onToggleKeyboardNav={() =>
+            updateState("keyboardNavEnabled", !state.keyboardNavEnabled)
+          }
+          searchError={state.searchError}
         />
       </div>
 
-      {/* Ping 에러 알림 */}
-      {pingError && (
+      {/* Ping error banner */}
+      {state.pingError && (
         <div className="bg-red-50 border-l-4 border-red-400 p-3 mx-6 mt-2">
           <div className="text-red-700 text-sm">
-            <strong>Ping 오류:</strong> {pingError}
+            <strong>Ping 오류:</strong> {state.pingError}
           </div>
         </div>
       )}
 
-      {/* 검색 에러 배너 */}
-      {searchError && (
+      {/* Info / search banner */}
+      {state.searchError && (
         <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mx-6 mt-2">
           <div className="text-amber-800 text-sm">
-            <strong>검색 오류:</strong> {searchError}
+            <strong>알림:</strong> {state.searchError}
           </div>
         </div>
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* 메인 네트워크 다이어그램 */}
+        {/* Diagram */}
         <div className="flex-1 bg-gradient-to-br from-indigo-400 to-purple-500 overflow-auto p-1">
           <NetworkDiagram
-            key={renderKey}
+            key={state.renderKey}
             nodes={finalNodes}
-            edges={smartFilteredEdges} // 트레이스 포함된 최종 엣지
-            selectedDevice={selectedDevice}
+            edges={finalEdges}
+            selectedDevice={state.selectedDevice}
             onDeviceClick={handleDeviceClick}
-            onCanvasClick={resetSelections}
-            devices={devices}
+            onCanvasClick={resetAllSelections}
+            devices={state.devices}
             onEdgeClick={handleEdgeClick}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            keyboardNavigationEnabled={keyboardNavEnabled}
-            isPinging={isPinging}
+            keyboardNavigationEnabled={state.keyboardNavEnabled}
+            isPinging={state.isPinging}
             viewMode="full"
-            showOnlyProblems={showProblemOnly}
-            zoomLevel={currentZoomLevel}
+            showOnlyProblems={state.showProblemOnly}
+            zoomLevel={state.currentZoomLevel}
             onZoomChange={handleZoomChange}
           />
-          {/* 빈 상태 메시지 */}
-          {devices.length === 0 && (
+
+          {/* Empty state */}
+          {state.devices.length === 0 && (
             <div className="mt-6 text-white text-center text-sm bg-black/30 rounded p-2">
               ⚠️ 장비가 없습니다. JSON 파일을 업로드해주세요.
             </div>
           )}
         </div>
 
-        {/* 우측 정보 패널 */}
+        {/* Right side panel */}
         <SidePanel
-          selectedDevice={selectedDevice}
-          selectedCable={selectedCable}
-          traceResult={traceResult}
-          traceError={traceError}
-          setSelectedDevice={setSelectedDevice}
-          setSelectedCable={setSelectedCable}
+          selectedDevice={state.selectedDevice}
+          selectedCable={state.selectedCable}
+          traceResult={state.traceResult}
+          traceError={state.traceError}
+          setSelectedDevice={(device) => updateState("selectedDevice", device)}
+          setSelectedCable={(cable) => updateState("selectedCable", cable)}
           filteredCables={filteredCables}
-          refetchDevices={async () => setDevices(await fetchDevices())}
-          refetchCables={async () => setAllCables(await fetchCables())}
-          devices={devices}
+          refetchDevices={async () => updateState("devices", await fetchDevices())}
+          refetchCables={async () => updateState("cables", await fetchCables())}
+          devices={state.devices}
         />
       </div>
     </div>
