@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/pages/MainPage.tsx – stabilized layout & search visibility
+// src/pages/MainPage.tsx – stabilized layout & search visibility (pilot-ready)
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { fetchDevices } from "../api/deviceApi";
@@ -13,7 +13,7 @@ import { DeviceStatus } from "../types/status";
 import {
   LayoutMode,
   getNewRadialLayoutedElements,
-  //getDagreLayoutedElements,
+  // getDagreLayoutedElements, // (fixed: radial-only)
 } from "../utils/layout";
 import {
   mapCablesToEdges,
@@ -32,11 +32,23 @@ import CustomNode from "../components/CustomNode";
 import CustomEdge from "../utils/CustomEdge";
 import { alignNodesToCalculatedCenters } from "../utils/nodeCenterCalculator";
 
-// Component config
+// ───────────────────────────────── helpers (local, no extra file) ─────────────────────────────────
+const toNum = (v: unknown, fb = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fb;
+};
+const norm = (s?: string) => (s ?? "").toLowerCase();
+const includesCI = (hay?: string, needle?: string) =>
+  norm(hay).includes(norm(needle));
+
+// ───────────────────────────────── config ─────────────────────────────────
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
 const ZOOM_HIDE_PC = 0.7;
+const INITIAL_ZOOM = 0.6;
+const ZOOM_CACHE_KEY = "tracenet.view.zoom";
 
+// ───────────────────────────────── state ─────────────────────────────────
 interface AppState {
   devices: Device[];
   cables: CableDto[];
@@ -82,14 +94,16 @@ const initialState: AppState = {
   isPinging: false,
   pingError: null,
   searchError: undefined,
-  currentZoomLevel: 1.0,
+  currentZoomLevel: INITIAL_ZOOM,
   keyboardNavEnabled: true,
   layoutedNodes: [],
 };
 
+// ───────────────────────────────── component ─────────────────────────────────
 const MainPage = () => {
   const [state, setState] = useState<AppState>(initialState);
   const traceTimestampRef = useRef<number>(0);
+  const rAFRef = useRef<number | null>(null);
 
   const updateState = useCallback(
     <K extends keyof AppState>(key: K, value: AppState[K]) => {
@@ -117,8 +131,7 @@ const MainPage = () => {
 
       const matchedDevice = devices.find(
         (d) =>
-          d.name.toLowerCase() === trimmedQuery.toLowerCase() ||
-          d.ipAddress === trimmedQuery
+          norm(d.name) === norm(trimmedQuery) || d.ipAddress === trimmedQuery
       );
 
       if (!matchedDevice) {
@@ -190,30 +203,28 @@ const MainPage = () => {
   }, [state.layoutedNodes, updateMultipleStates]);
 
   // ────────────────── Aggregations ──────────────────
-  const deviceStatusCounts = useMemo(
-    () => ({
-      [DeviceStatus.Online]: state.devices.filter(
-        (d) => d.status === DeviceStatus.Online
-      ).length,
-      [DeviceStatus.Offline]: state.devices.filter(
-        (d) => d.status === DeviceStatus.Offline
-      ).length,
-      [DeviceStatus.Unstable]: state.devices.filter(
-        (d) => d.status === DeviceStatus.Unstable
-      ).length,
-    }),
-    [state.devices]
-  );
+  const deviceStatusCounts = useMemo(() => {
+    const acc = {
+      [DeviceStatus.Online]: 0,
+      [DeviceStatus.Offline]: 0,
+      [DeviceStatus.Unstable]: 0,
+    };
+    for (const d of state.devices) {
+      if (d.status in acc) (acc as any)[d.status]++;
+    }
+    return acc;
+  }, [state.devices]);
 
   // ────────────────── Filters (for side panel) ──────────────────
   const filteredCables = useMemo(() => {
-    const query = state.searchQuery.toLowerCase();
+    const q = norm(state.searchQuery);
+    if (!q) return state.cables;
     return state.cables.filter(
-      (cable) =>
-        cable.cableId.toLowerCase().includes(query) ||
-        cable.description?.toLowerCase().includes(query) ||
-        cable.fromDevice.toLowerCase().includes(query) ||
-        cable.toDevice.toLowerCase().includes(query)
+      (c) =>
+        includesCI(c.cableId, q) ||
+        includesCI(c.description, q) ||
+        includesCI(c.fromDevice, q) ||
+        includesCI(c.toDevice, q)
     );
   }, [state.cables, state.searchQuery]);
 
@@ -230,15 +241,12 @@ const MainPage = () => {
         type: device.type?.toLowerCase() ?? "pc",
         status: device.status,
         showLabel: true,
-        //mode: state.layoutMode,
         mode: "radial",
         // search only affects highlighting, not layout membership
         highlighted:
           !!state.searchQuery &&
-          (device.name
-            .toLowerCase()
-            .includes(state.searchQuery.toLowerCase()) ||
-            device.ipAddress.includes(state.searchQuery)),
+          (includesCI(device.name, state.searchQuery) ||
+            includesCI(device.ipAddress, state.searchQuery)),
       },
     }));
   }, [state.devices, state.searchQuery, state.layoutMode]);
@@ -247,21 +255,17 @@ const MainPage = () => {
   const zoomFilteredNodes = useMemo(() => {
     if (state.traceFilterNodes) return allNodes;
     if (state.currentZoomLevel < ZOOM_HIDE_PC) {
-      const filtered = allNodes.filter((n) =>
-        ["server", "switch", "router"].includes(n.data?.type)
-      );
-      if (window.location.hostname === "localhost") {
-        console.log(`PC 노드 숨김: ${allNodes.length} -> ${filtered.length}`);
-      }
+      const filtered = allNodes.filter((n) => {
+        const t = (n.data as any)?.type ?? "pc";
+        return t === "server" || t === "switch" || t === "router";
+      });
       return filtered;
     }
     return allNodes;
   }, [allNodes, state.currentZoomLevel, state.traceFilterNodes]);
 
   const baseEdges = useMemo(() => {
-    //   const isRadial = state.layoutMode === LayoutMode.Radial;
-    //   return mapCablesToEdges(state.cables, isRadial);
-    // }, [state.cables, state.layoutMode]);
+    // radial only
     return mapCablesToEdges(state.cables, true);
   }, [state.cables]);
 
@@ -275,48 +279,34 @@ const MainPage = () => {
 
   /** Layout + secondary alignment */
   const layoutResult = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
-    // const calculated =
-    //   state.layoutMode === LayoutMode.Radial
-    //     ? getNewRadialLayoutedElements(zoomFilteredNodes, layoutEdges)
-    //     : getDagreLayoutedElements(zoomFilteredNodes, layoutEdges);
-
     const calculated = getNewRadialLayoutedElements(
       zoomFilteredNodes,
       layoutEdges
     );
-
     const { nodes: alignedNodes } = alignNodesToCalculatedCenters(
       calculated.nodes,
       calculated.edges
     );
-
     return { nodes: alignedNodes, edges: calculated.edges as Edge[] };
-    //}, [state.layoutMode, zoomFilteredNodes, layoutEdges]);
   }, [zoomFilteredNodes, layoutEdges]);
 
   /** Search visibility: matched nodes + their cable neighbors (keeps structure) */
   const searchVisibleSet = useMemo(() => {
-    const q = state.searchQuery.trim().toLowerCase();
+    const q = norm(state.searchQuery.trim());
     if (!q) return null;
 
     const matched = new Set(
       state.devices
-        .filter(
-          (d) =>
-            d.name.toLowerCase().includes(q) ||
-            d.ipAddress.includes(state.searchQuery)
-        )
+        .filter((d) => includesCI(d.name, q) || includesCI(d.ipAddress, q))
         .map((d) => String(d.deviceId))
     );
 
-    // also include neighbors via cables
-    state.cables.forEach((c) => {
+    for (const c of state.cables) {
       const a = String(c.fromDeviceId);
       const b = String(c.toDeviceId);
       if (matched.has(a)) matched.add(b);
       if (matched.has(b)) matched.add(a);
-    });
-
+    }
     return matched;
   }, [state.searchQuery, state.devices, state.cables]);
 
@@ -351,15 +341,29 @@ const MainPage = () => {
 
   const handleZoomChange = useCallback(
     (zoomLevel: number) => {
-      updateState("currentZoomLevel", zoomLevel);
-      if (window.location.hostname === "localhost") {
-        console.log(
-          `[ZOOM] ${zoomLevel.toFixed(2)} hidePC=${zoomLevel < ZOOM_HIDE_PC}`
-        );
-      }
+      if (rAFRef.current) cancelAnimationFrame(rAFRef.current);
+      rAFRef.current = requestAnimationFrame(() => {
+        updateState("currentZoomLevel", zoomLevel);
+        try {
+          localStorage.setItem(
+            ZOOM_CACHE_KEY,
+            String(toNum(zoomLevel, INITIAL_ZOOM))
+          );
+        } catch (err) {
+          console.error("Zoom level 저장 실패:", err);
+          // 필요 시 사용자 알림이나 상태 업데이트 추가 가능
+          // updateMultipleStates({ error: "줌 설정 저장 실패" });
+        }
+      });
     },
     [updateState]
   );
+
+  useEffect(() => {
+    return () => {
+      if (rAFRef.current) cancelAnimationFrame(rAFRef.current);
+    };
+  }, []);
 
   const handleSearchSubmit = useCallback(async () => {
     await executeDeviceSearch(state.searchQuery, state.devices);
@@ -409,12 +413,12 @@ const MainPage = () => {
       if (!isCable) return;
 
       const cableId = id.slice(CABLE_EDGE_PREFIX.length);
+      if (!cableId) return; // 빈 문자열 체크
       const foundCable = state.cables.find((c) => c.cableId === cableId);
       if (foundCable) {
         updateMultipleStates({
           selectedCable: foundCable,
           selectedDevice: null,
-          // keep cable selection; clear trace visuals
           traceResult: null,
           traceError: null,
           traceEdges: [],
@@ -486,39 +490,41 @@ const MainPage = () => {
     updateState("layoutedNodes", nodesWithSelection);
   }, [layoutResult, state.selectedDevice, updateState]);
 
-  // 레이아웃 모드 변경시 리렌더링 (현재 모드 변경 비활성화)
+  // layout mode is fixed to radial (kept for future switch)
   // useEffect(() => {
   //   setState((prev) => ({ ...prev, renderKey: prev.renderKey + 1 }));
   // }, [state.layoutMode]);
 
   useEffect(() => {
-    let isMounted = true;
-    const loadInitialData = async () => {
+    // initial data load + zoom restore
+    (async () => {
       try {
         const [deviceData, cableData] = await Promise.all([
           fetchDevices(),
           fetchCables(),
         ]);
-        if (isMounted) {
-          updateMultipleStates({
-            devices: deviceData,
-            cables: cableData,
-            loading: false,
-          });
-        }
+        updateMultipleStates({
+          devices: deviceData,
+          cables: cableData,
+          loading: false,
+        });
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "알 수 없는 오류입니다.";
-        if (isMounted) {
-          updateMultipleStates({ error: message, loading: false });
+        updateMultipleStates({ error: message, loading: false });
+      } finally {
+        // zoom restore (first frame uses INITIAL_ZOOM; then snap to saved)
+        try {
+          const saved = Number(localStorage.getItem(ZOOM_CACHE_KEY));
+          if (Number.isFinite(saved) && saved > 0) {
+            updateState("currentZoomLevel", saved);
+          }
+        } catch (err) {
+          console.error("Zoom level 복원 실패:", err);
         }
       }
-    };
-    loadInitialData();
-    return () => {
-      isMounted = false;
-    };
-  }, [updateMultipleStates]);
+    })();
+  }, [updateMultipleStates, updateState]);
 
   // ────────────────── Render ──────────────────
   if (state.loading) return <LoadingSpinner />;
