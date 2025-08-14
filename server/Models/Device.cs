@@ -25,11 +25,15 @@ namespace TraceNet.Models
         public string Type { get; set; } = string.Empty;
         [Range(1, 48)]
         public int PortCount { get; set; }
+
+        [MaxLength(64)]
         public string? IPAddress { get; set; }
         public int? RackId { get; set; }
         public virtual Rack? Rack { get; set; }
         public virtual List<Port> Ports { get; set; } = new();
-        public string Status { get; set; } = "Unknown"; // Online, Offline, Unstable, Unknown
+
+        [Required, MaxLength(16)]
+        public string Status { get; set; } = "Unknown";
         public long? LatencyMs { get; set; }
         public DateTime? LastCheckedAt { get; set; }
         public bool EnablePing { get; set; } = true; // Ping 활성화 여부
