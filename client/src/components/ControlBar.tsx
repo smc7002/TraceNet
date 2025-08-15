@@ -1,6 +1,7 @@
 // controlbar.tsx
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { DeviceStatus } from "../types/status";
 
 interface ControlBarProps {
   onRefresh: () => void;
@@ -19,6 +20,11 @@ interface ControlBarProps {
   keyboardNavEnabled?: boolean;
   onToggleKeyboardNav?: () => void;
   searchError?: string;
+
+  /** 전체 상태 일괄 변경 */
+  onBulkSetStatus: (status: DeviceStatus, enablePing?: boolean) => Promise<void> | void;
+  /** 진행중 표시(선택) — 없으면 isPinging 사용 */
+  isBusy?: boolean;
 }
 
 export default function ControlBar({
@@ -34,8 +40,15 @@ export default function ControlBar({
   //keyboardNavEnabled,
   //onToggleKeyboardNav,
   searchError,
+
+  // 🆕 추가 props
+  onBulkSetStatus,
+  isBusy,
 }: ControlBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [openBulk, setOpenBulk] = useState(false);
+
+  const busy = isBusy ?? isPinging;
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -70,26 +83,29 @@ export default function ControlBar({
     }
   };
 
+  const handleBulk = (status: DeviceStatus, enablePing?: boolean) => {
+    setOpenBulk(false);
+    onBulkSetStatus(status, enablePing);
+  };
+
   return (
     <div className="w-full bg-white border-b border-slate-200 shadow-sm px-6 py-3 flex items-center gap-4">
       {/* 🔍 검색창 */}
       <input
         type="text"
-        placeholder={
-          searchError ? "장비 없음: 다시 입력하세요" : "장비 이름 or IP 검색..."
-        } // 🆕
+        placeholder={searchError ? "장비 없음: 다시 입력하세요" : "장비 이름 or IP 검색..."}
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") onSearchSubmit();
-        }} // ✅ Enter로 실행
+        }}
         className={`flex-1 px-4 py-2 text-sm border rounded-md outline-none transition
-    ${
-      searchError
-        ? "border-red-400 focus:ring-2 focus:ring-red-400 focus:border-red-400"
-        : "border-slate-300 focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
-    }`}
-        disabled={isPinging}
+          ${
+            searchError
+              ? "border-red-400 focus:ring-2 focus:ring-red-400 focus:border-red-400"
+              : "border-slate-300 focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+          }`}
+        disabled={busy}
       />
 
       {/* ✅ 상태 통계 */}
@@ -105,10 +121,10 @@ export default function ControlBar({
         </div>
       </div>
 
-      {/* 🔘 버튼들 */}
+      {/* 문제만 토글 */}
       <button
         onClick={onToggleProblemOnly}
-        disabled={isPinging} // 🆕 Ping 중일 때 비활성화
+        disabled={busy}
         className={`px-3 py-2 rounded-md text-sm border ${
           showProblemOnly
             ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
@@ -118,17 +134,44 @@ export default function ControlBar({
         🔍 문제 장비만
       </button>
 
-      {/* 🆕 전체 Ping 버튼 */}
+      {/* 전체 상태 드롭다운 */}
+      <div className="relative">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setOpenBulk((v) => !v)}
+          className="px-3 py-2 rounded-md text-sm border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+          ⚙️ 전체 상태
+        </button>
+
+        {openBulk && (
+          <div
+            className="absolute right-0 mt-2 w-56 rounded-md border border-slate-200 bg-white shadow-lg z-50"
+            onMouseLeave={() => setOpenBulk(false)}
+          >
+            <MenuItem label="모두 Online" onClick={() => handleBulk(DeviceStatus.Online)} />
+            <MenuItem label="모두 Offline" onClick={() => handleBulk(DeviceStatus.Offline)} />
+            <MenuItem label="모두 Unstable" onClick={() => handleBulk(DeviceStatus.Unstable)} />
+            <MenuItem label="모두 Unknown" onClick={() => handleBulk(DeviceStatus.Unknown)} />
+            <div className="my-1 border-t border-slate-200" />
+            <MenuItem label="모두 Online + Ping ON" onClick={() => handleBulk(DeviceStatus.Online, true)} />
+            <MenuItem label="모두 Offline + Ping OFF" onClick={() => handleBulk(DeviceStatus.Offline, false)} />
+          </div>
+        )}
+      </div>
+
+      {/* 전체 Ping */}
       <button
         onClick={onPingAll}
-        disabled={isPinging}
+        disabled={busy}
         className={`px-3 py-2 rounded-md text-sm border ${
-          isPinging
+          busy
             ? "bg-green-400 text-white border-green-400 cursor-not-allowed"
             : "bg-green-600 text-white border-green-600 hover:bg-green-700"
         } disabled:opacity-75 transition flex items-center gap-1`}
       >
-        {isPinging ? (
+        {busy ? (
           <>
             <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
             Ping 중...
@@ -138,31 +181,19 @@ export default function ControlBar({
         )}
       </button>
 
-      {/* 🆕 키보드 네비게이션 토글 버튼 */}
-      {/* <button
-        onClick={onToggleKeyboardNav}
-        disabled={isPinging}
-        className={`px-3 py-2 rounded-md text-sm border ${
-          keyboardNavEnabled
-            ? "bg-slate-200 text-gray-800 border-slate-400 hover:bg-slate-300"
-            : "bg-white text-gray-800 border-slate-300 hover:bg-slate-100"
-        } disabled:opacity-50 disabled:cursor-not-allowed transition`}
-      >
-        🎮 키보드
-      </button> */}
-
+      {/* 새로고침 */}
       <button
         onClick={onRefresh}
-        disabled={isPinging} // 🆕 Ping 중일 때 비활성화
+        disabled={busy}
         className="px-3 py-2 rounded-md text-sm bg-blue-600 text-white border border-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
       >
         🔄 새로고침
       </button>
 
-      {/* 📂 JSON 업로드 */}
+      {/* JSON 업로드 */}
       <button
         onClick={handleImportClick}
-        disabled={isPinging} // 🆕 Ping 중일 때 비활성화
+        disabled={busy}
         className="px-3 py-2 rounded-md text-sm bg-slate-600 text-white border border-slate-600 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
       >
         📂 JSON 업로드
@@ -175,5 +206,17 @@ export default function ControlBar({
         className="hidden"
       />
     </div>
+  );
+}
+
+function MenuItem({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
+    >
+      {label}
+    </button>
   );
 }

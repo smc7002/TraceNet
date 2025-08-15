@@ -9,6 +9,7 @@ import { pingAllDevices } from "../api/pingApi";
 import type { Device } from "../types/device";
 import type { TraceResponse } from "../types/trace";
 import type { CableDto } from "../types/cable";
+import { updateDeviceStatusBulk } from "../api/deviceApi";
 import { DeviceStatus } from "../types/status";
 import {
   LayoutMode,
@@ -206,6 +207,51 @@ const MainPage = () => {
       ).length,
     }),
     [state.devices]
+  );
+
+  // 🆕 전체 상태 일괄 변경
+  const handleBulkSetStatus = useCallback(
+    async (status: DeviceStatus, enablePing?: boolean) => {
+      const ids = state.devices.map((d) => d.deviceId);
+      if (ids.length === 0) {
+        alert("변경할 장비가 없습니다.");
+        return;
+      }
+
+      const human =
+        `${status}` +
+        (enablePing !== undefined ? `, Ping ${enablePing ? "ON" : "OFF"}` : "");
+      if (!confirm(`전체 ${ids.length}대 장비를 "${human}" 으로 변경할까요?`))
+        return;
+
+      // 기존 isPinging 재활용해서 상단 버튼들 비활성화
+      updateMultipleStates({ isPinging: true, pingError: null });
+
+      try {
+        await updateDeviceStatusBulk({ deviceIds: ids, status, enablePing });
+
+        // 🔄 로컬 상태도 즉시 반영(낙관적 업데이트)
+        const now = new Date().toISOString();
+        const newDevices = state.devices.map((d) => ({
+          ...d,
+          status,
+          enablePing: enablePing ?? d.enablePing,
+          lastCheckedAt: now,
+          latencyMs: null,
+        }));
+        updateState("devices", newDevices);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "일괄 상태 변경 중 오류가 발생했습니다.";
+        alert(message);
+        updateState("pingError", message);
+      } finally {
+        updateState("isPinging", false);
+      }
+    },
+    [state.devices, updateMultipleStates, updateState]
   );
 
   // ────────────────── Filters (for side panel) ──────────────────
@@ -558,6 +604,7 @@ const MainPage = () => {
             updateState("keyboardNavEnabled", !state.keyboardNavEnabled)
           }
           searchError={state.searchError}
+          onBulkSetStatus={handleBulkSetStatus}
         />
       </div>
 
