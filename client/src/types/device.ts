@@ -10,6 +10,7 @@ export interface Device {
   ports?: Port[];
   portCount: number;
   rackId: number;
+  enablePing: boolean;
   status: 'Online' | 'Offline' | 'Unstable' | 'Unknown';
   lastCheckedAt: string; // or Date if parsed
 }
