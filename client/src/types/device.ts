@@ -1,4 +1,4 @@
-// 📁 src/types/device.ts
+// src/types/device.ts
 
 import type { Port } from "../types/port";
 

@@ -1,11 +1,8 @@
 // src/types/port.ts
-import type { CableConnection } from "../types/cableConnection"; // 없으면 아래에 같이 만들자
-
 export interface Port {
-  portId: number;
-  name: string;
-  connectionCableConnectionId?: number;
-  deviceId: number;
-  connection?: CableConnection;
-  toConnections?: CableConnection[];
+  readonly portId: number;
+  readonly deviceId: number;
+  readonly portNumber: number; // 1-based index
+  isActive: boolean;
+  name?: string | null;
 }

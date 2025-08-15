@@ -118,7 +118,7 @@ const MainPage = () => {
       const matchedDevice = devices.find(
         (d) =>
           d.name.toLowerCase() === trimmedQuery.toLowerCase() ||
-          d.ipAddress === trimmedQuery
+          d.ipAddress?.trim() === trimmedQuery
       );
 
       if (!matchedDevice) {
@@ -132,7 +132,10 @@ const MainPage = () => {
       }
 
       try {
+        const callId = Date.now();
+        traceTimestampRef.current = callId;
         const result = await fetchTrace(matchedDevice.deviceId);
+        if (traceTimestampRef.current !== callId) return; // 오래된 응답 무시
 
         // collect nodes on path
         const nodeIds = new Set<string>();
@@ -158,7 +161,7 @@ const MainPage = () => {
 
         updateMultipleStates({
           traceFilterNodes: nodeIds,
-          traceEdges: mapTraceCablesToEdges(result.cables, Date.now()),
+          traceEdges: mapTraceCablesToEdges(result.cables ?? [], Date.now()),
           traceResult: result,
           searchError: undefined,
         });
@@ -238,7 +241,7 @@ const MainPage = () => {
           (device.name
             .toLowerCase()
             .includes(state.searchQuery.toLowerCase()) ||
-            device.ipAddress.includes(state.searchQuery)),
+            device.ipAddress?.includes(state.searchQuery)),
       },
     }));
   }, [state.devices, state.searchQuery, state.layoutMode]);
@@ -302,9 +305,7 @@ const MainPage = () => {
     const matched = new Set(
       state.devices
         .filter(
-          (d) =>
-            d.name.toLowerCase().includes(q) ||
-            d.ipAddress.includes(state.searchQuery)
+          (d) => d.name.toLowerCase().includes(q) || d.ipAddress?.includes(q)
         )
         .map((d) => String(d.deviceId))
     );
@@ -367,6 +368,9 @@ const MainPage = () => {
 
   const handleDeviceClick = useCallback(
     async (device: Device) => {
+      const callId = Date.now();
+      traceTimestampRef.current = callId;
+
       updateState("selectedDevice", device);
       updateMultipleStates({
         selectedCable: null,
@@ -381,9 +385,10 @@ const MainPage = () => {
 
       try {
         const result = await fetchTrace(device.deviceId);
+        if (traceTimestampRef.current !== callId) return;
         traceTimestampRef.current = Date.now();
         const traceEdges = mapTraceCablesToEdges(
-          result.cables,
+          result.cables ?? [],
           traceTimestampRef.current
         );
 
@@ -438,7 +443,7 @@ const MainPage = () => {
         return pingResult
           ? {
               ...device,
-              status: pingResult.status as Device["status"],
+              status: (pingResult.status as any) ?? DeviceStatus.Unknown,
               lastCheckedAt: pingResult.checkedAt,
             }
           : device;

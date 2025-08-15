@@ -2,6 +2,7 @@
 
 import axios from "axios";
 import type { Device } from "../types/device";
+import type { Port } from "../types/port";
 
 // 환경별 API 기본 URL 설정
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5285/api";
@@ -37,19 +38,19 @@ export async function fetchDevices(): Promise<Device[]> {
 /**
  * 포트 관련 타입 정의
  */
-export interface Port {
-  portId: number;
-  deviceId: number;
-  portNumber: number;
-  isActive: boolean;
-  device?: {
-    deviceId: number;
-    name: string;
-    type: string;
-    ipAddress?: string;
-    status: string;
-  };
-}
+// export interface Port {
+//   portId: number;
+//   deviceId: number;
+//   portNumber: number;
+//   isActive: boolean;
+//   device?: {
+//     deviceId: number;
+//     name: string;
+//     type: string;
+//     ipAddress?: string;
+//     status: string;
+//   };
+// }
 
 /**
  * 특정 장비의 포트 목록 조회

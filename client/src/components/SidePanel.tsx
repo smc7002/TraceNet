@@ -1,3 +1,5 @@
+// 📁 src/components/SidePanel.tsx
+
 import { useState, useEffect } from "react";
 import axios, { AxiosError } from "axios";
 import DeviceForm from "./DeviceForm";
@@ -69,7 +71,7 @@ export default function SidePanel({
         devicePorts,
         filteredCables,
         selectedDevice!,
-        devices 
+        devices
       );
       setPortConnections(connections);
     } catch (error) {
@@ -79,6 +81,13 @@ export default function SidePanel({
     } finally {
       setLoadingPorts(false);
     }
+  };
+
+  const parsePortNumber = (label: string | number | undefined) => {
+    if (typeof label === "number") return label;
+    if (!label) return NaN;
+    const m = String(label).match(/\d+/);
+    return m ? Number(m[0]) : NaN;
   };
 
   const createPortConnections = (
@@ -101,11 +110,11 @@ export default function SidePanel({
 
       // 포트 번호는 string으로 변환해서 비교해야 함
       const connectedCable = cables.find((cable) => {
+        const fromNum = parsePortNumber(cable.fromPort);
+        const toNum = parsePortNumber(cable.toPort);
         return (
-          (cable.fromDevice === currentDevice.name &&
-            cable.fromPort === String(portNum)) ||
-          (cable.toDevice === currentDevice.name &&
-            cable.toPort === String(portNum))
+          (cable.fromDevice === currentDevice.name && fromNum === portNum) ||
+          (cable.toDevice === currentDevice.name && toNum === portNum)
         );
       });
 
