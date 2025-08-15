@@ -3,6 +3,7 @@ using TraceNet.Data;
 using TraceNet.Models;
 using TraceNet.DTOs;
 using AutoMapper;
+using System.Globalization;
 
 namespace TraceNet.Services
 {
@@ -36,6 +37,7 @@ namespace TraceNet.Services
                         .ThenInclude(c => c.ToPort)
                             .ThenInclude(p => p.Device)
                 .AsSplitQuery()
+                .AsNoTracking()
                 .ToListAsync();
 
             foreach (var device in devices)
@@ -60,15 +62,18 @@ namespace TraceNet.Services
             if (string.IsNullOrWhiteSpace(device.Name) || device.PortCount <= 0)
                 return null;
 
+            // Ports 리스트 초기화
             if (device.Ports == null || device.Ports.Count == 0)
             {
+                device.Ports = new List<Port>(); // null이면 새 리스트 생성
+
                 for (int i = 0; i < device.PortCount; i++)
                 {
                     device.Ports.Add(new Port { Name = $"Port {i + 1}" });
                 }
             }
 
-            if (!device.Type.Equals("Switch", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(device.Type, "Switch", StringComparison.OrdinalIgnoreCase))
             {
                 device.RackId = null;
             }
@@ -135,14 +140,30 @@ namespace TraceNet.Services
         /// </summary>
         public async Task<PingResultDto> PingDeviceAsync(int deviceId, int timeoutMs = 2000)
         {
-            var device = await _context.Devices
-                .FirstOrDefaultAsync(d => d.DeviceId == deviceId);
-
+            var device = await _context.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId);
             if (device == null)
                 throw new KeyNotFoundException($"장비 ID {deviceId}를 찾을 수 없습니다.");
 
+            // 수동모드: Ping 건너뜀 (마지막 점검시간만 업데이트)
+            if (!device.EnablePing)
+            {
+                device.LastCheckedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return new PingResultDto
+                {
+                    DeviceId = device.DeviceId,
+                    DeviceName = device.Name,
+                    IpAddress = device.IPAddress ?? "",
+                    Status = device.Status ?? "Unknown",
+                    CheckedAt = DateTime.UtcNow,
+                    ErrorMessage = "Ping 비활성화됨 (EnablePing=false)"
+                };
+            }
+
             if (string.IsNullOrEmpty(device.IPAddress))
             {
+                device.LastCheckedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
                 return new PingResultDto
                 {
                     DeviceId = deviceId,
@@ -154,14 +175,11 @@ namespace TraceNet.Services
                 };
             }
 
-            // PingService 호출
             var pingResult = await _pingService.PingAsync(device.IPAddress, timeoutMs);
 
-            // Device 상태 업데이트
             device.Status = pingResult.Status;
             device.LatencyMs = pingResult.LatencyMs;
             device.LastCheckedAt = DateTime.UtcNow;
-
             await _context.SaveChangesAsync();
 
             return new PingResultDto
@@ -176,93 +194,124 @@ namespace TraceNet.Services
             };
         }
 
+
         /// <summary>
         /// 여러 장비 일괄 Ping 실행 (안전한 매핑 방식)
         /// </summary>
-        public async Task<List<PingResultDto>> PingMultipleDevicesAsync(List<int> deviceIds, int timeoutMs = 2000)
+        public async Task<List<PingResultDto>> PingMultipleDevicesAsync(
+     List<int> deviceIds, int timeoutMs = 2000, int maxConcurrency = 10)
         {
-            _logger.LogInformation("다중 Ping 시작: 장비 수={Count}", deviceIds.Count);
-            try
+            _logger.LogInformation("다중 Ping 시작: 장비 수={Count}, 동시성={MaxConcurrency}",
+                deviceIds.Count, maxConcurrency);
+
+            var devices = await _context.Devices
+                .Where(d => deviceIds.Contains(d.DeviceId))
+                .ToListAsync();
+
+            var results = new List<PingResultDto>();
+            if (!devices.Any()) return results;
+
+            // 1) EnablePing=false
+            var disabled = devices.Where(d => !d.EnablePing).ToList();
+            foreach (var d in disabled)
             {
-                var devices = await _context.Devices
-                    .Where(d => deviceIds.Contains(d.DeviceId))
-                    .ToListAsync();
-
-                _logger.LogInformation("DB에서 조회된 장비 수: {Count}", devices.Count);
-
-                if (!devices.Any())
-                    return new List<PingResultDto>();
-
-                var results = new List<PingResultDto>();
-
-                // IP가 있는 장비들만 Ping
-                var devicesWithIp = devices.Where(d => !string.IsNullOrEmpty(d.IPAddress)).ToList();
-                _logger.LogInformation("IP가 설정된 장비 수: {Count}", devicesWithIp.Count);
-
-                if (devicesWithIp.Any())
+                d.LastCheckedAt = DateTime.UtcNow;
+                results.Add(new PingResultDto
                 {
-                    var ipAddresses = devicesWithIp.Select(d => d.IPAddress!).ToList();
-                    var pingResults = await _pingService.PingMultipleAsync(ipAddresses, timeoutMs);
+                    DeviceId = d.DeviceId,
+                    DeviceName = d.Name,
+                    IpAddress = d.IPAddress ?? "",
+                    Status = d.Status ?? "Unknown",
+                    CheckedAt = DateTime.UtcNow,
+                    ErrorMessage = "Ping 비활성화됨 (EnablePing=false)"
+                });
+            }
 
-                    _logger.LogInformation("Ping 완료: {Count}개 결과 수신", pingResults.Count);
+            // 2) IP 없음 (EnablePing=true)
+            var noIp = devices.Where(d => string.IsNullOrEmpty(d.IPAddress) && d.EnablePing).ToList();
+            foreach (var d in noIp)
+            {
+                d.LastCheckedAt = DateTime.UtcNow;
+                results.Add(new PingResultDto
+                {
+                    DeviceId = d.DeviceId,
+                    DeviceName = d.Name,
+                    IpAddress = "",
+                    Status = "Unknown",
+                    CheckedAt = DateTime.UtcNow,
+                    ErrorMessage = "IP 주소가 설정되지 않음"
+                });
+            }
 
-                    // 🔧 안전한 매핑: Dictionary 사용으로 순서 의존성 제거
-                    var deviceByIp = devicesWithIp.ToDictionary(d => d.IPAddress!, d => d);
-                    
-                    foreach (var pingResult in pingResults)
+            // 3) 실제 Ping 대상 (IP 있고 EnablePing=true)
+            var targets = devices.Where(d => !string.IsNullOrEmpty(d.IPAddress) && d.EnablePing).ToList();
+            if (targets.Any())
+            {
+                using var sem = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+
+                // 병렬 태스크에서는 EF 엔티티 수정 금지! 결과만 반환
+                var pingTasks = targets.Select(async d =>
+                {
+                    await sem.WaitAsync();
+                    try
                     {
-                        if (deviceByIp.TryGetValue(pingResult.IpAddress, out var device))
+                        var pr = await _pingService.PingAsync(d.IPAddress!, timeoutMs);
+                        return new
                         {
-                            // Device 상태 업데이트
-                            device.Status = pingResult.Status;
-                            device.LatencyMs = pingResult.LatencyMs;
-                            device.LastCheckedAt = DateTime.UtcNow;
-
-                            results.Add(new PingResultDto
-                            {
-                                DeviceId = device.DeviceId,
-                                DeviceName = device.Name,
-                                IpAddress = device.IPAddress!,
-                                Status = pingResult.Status,
-                                LatencyMs = pingResult.LatencyMs,
-                                CheckedAt = DateTime.UtcNow,
-                                ErrorMessage = pingResult.ErrorMessage
-                            });
-                        }
-                        else
-                        {
-                            // 매핑 실패 로깅
-                            _logger.LogWarning("Ping 결과 매핑 실패: IP {IP} - 해당 장비를 찾을 수 없음", pingResult.IpAddress);
-                        }
+                            d.DeviceId,
+                            d.Name,
+                            d.IPAddress,
+                            Ping = pr
+                        };
                     }
-                }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "장비 {DeviceId}({IP}) Ping 실패", d.DeviceId, d.IPAddress);
+                        return new
+                        {
+                            d.DeviceId,
+                            d.Name,
+                            d.IPAddress,
+                            Ping = new PingResultDto
+                            {
+                                IpAddress = d.IPAddress!,
+                                Status = "Unreachable",
+                                CheckedAt = DateTime.UtcNow,
+                                ErrorMessage = ex.Message
+                            }
+                        };
+                    }
+                    finally { sem.Release(); }
+                });
 
-                // IP가 없는 장비들 처리
-                var devicesWithoutIp = devices.Where(d => string.IsNullOrEmpty(d.IPAddress));
-                foreach (var device in devicesWithoutIp)
+                var pinged = await Task.WhenAll(pingTasks);
+
+                // ← 단일 스레드에서 EF 엔티티 업데이트
+                var byId = devices.ToDictionary(x => x.DeviceId);
+                foreach (var x in pinged)
                 {
+                    var dev = byId[x.DeviceId];
+                    dev.Status = x.Ping.Status;
+                    dev.LatencyMs = x.Ping.LatencyMs;
+                    dev.LastCheckedAt = DateTime.UtcNow;
+
                     results.Add(new PingResultDto
                     {
-                        DeviceId = device.DeviceId,
-                        DeviceName = device.Name,
-                        IpAddress = "",
-                        Status = "Unknown",
+                        DeviceId = dev.DeviceId,
+                        DeviceName = dev.Name,
+                        IpAddress = dev.IPAddress!,
+                        Status = x.Ping.Status,
+                        LatencyMs = x.Ping.LatencyMs,
                         CheckedAt = DateTime.UtcNow,
-                        ErrorMessage = "IP 주소가 설정되지 않음"
+                        ErrorMessage = x.Ping.ErrorMessage
                     });
                 }
+            }
 
-                await _context.SaveChangesAsync();
-                _logger.LogInformation("DB 업데이트 완료: {Count}개 장비", devices.Count);
-                
-                return results;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "다중 Ping 실행 중 오류 발생");
-                throw; // 일단 기존 동작 유지
-            }
+            await _context.SaveChangesAsync();
+            return results;
         }
+
 
         /// <summary>
         /// 장비 상태 조회 (최신 Ping 결과 포함)
@@ -274,12 +323,78 @@ namespace TraceNet.Services
                     .ThenInclude(p => p.Connection)
                         .ThenInclude(c => c.ToPort)
                             .ThenInclude(p => p.Device)
+                .AsSplitQuery()
+                .AsNoTracking()
                 .FirstOrDefaultAsync(d => d.DeviceId == deviceId);
 
             if (device == null)
                 return null;
 
             return _mapper.Map<DeviceDto>(device);
+        }
+
+        private static readonly HashSet<string> AllowedStatuses = new(StringComparer.OrdinalIgnoreCase)
+        { "Online", "Offline", "Unstable", "Unknown", "Unreachable" };
+
+        private static string NormalizeStatus(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "Unknown";
+            var lower = s.Trim().ToLowerInvariant();
+            // 첫 글자 대문자화
+            return char.ToUpper(lower[0], CultureInfo.InvariantCulture) + lower[1..];
+        }
+
+        /// <summary>
+        /// 수동 상태 업데이트 (선택적으로 EnablePing도 변경)
+        /// </summary>
+        public async Task<DeviceDto?> UpdateStatusAsync(int deviceId, string status, bool? enablePing = null)
+        {
+            var device = await _context.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId);
+            if (device == null) return null;
+
+            var normalized = NormalizeStatus(status);
+            if (!AllowedStatuses.Contains(normalized))
+                throw new ArgumentException($"허용되지 않는 상태: {status}");
+
+            device.Status = normalized;
+            if (enablePing.HasValue) device.EnablePing = enablePing.Value;
+            device.LastCheckedAt = DateTime.UtcNow;
+            // 수동 지정이면 레이턴시는 무의미할 수 있음
+            device.LatencyMs = null;
+
+            await _context.SaveChangesAsync();
+            return _mapper.Map<DeviceDto>(device);
+        }
+
+        /// <summary>
+        /// 다수 장비 상태 일괄 업데이트
+        /// </summary>
+        public async Task<int> UpdateStatusBulkAsync(IEnumerable<(int deviceId, string status, bool? enablePing)> items)
+        {
+            var list = items.ToList();
+            if (list.Count == 0) return 0;
+
+            var ids = list.Select(i => i.deviceId).Distinct().ToList();
+            var devices = await _context.Devices.Where(d => ids.Contains(d.DeviceId)).ToListAsync();
+            var map = items
+            .GroupBy(i => i.deviceId)
+            .ToDictionary(g => g.Key, g => g.Last());
+
+            foreach (var d in devices)
+            {
+                var req = map[d.DeviceId];
+                var normalized = NormalizeStatus(req.status);
+                if (!AllowedStatuses.Contains(normalized))
+                    throw new ArgumentException($"허용되지 않는 상태: {req.status}");
+
+                d.Status = normalized;
+                if (req.enablePing.HasValue) d.EnablePing = req.enablePing.Value;
+                d.LastCheckedAt = DateTime.UtcNow;
+                d.LatencyMs = null;
+            }
+
+            await _context.SaveChangesAsync();
+            return devices.Count;
         }
     }
 }
