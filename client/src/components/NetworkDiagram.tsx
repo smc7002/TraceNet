@@ -14,6 +14,18 @@ import ReactFlow, {
 import type { Device } from "../types/device";
 import { useKeyboardNavigation } from "../hooks/useKeyboardNavigation";
 
+// 뷰포트 리포팅용 타입
+type ViewportInfo = {
+  x: number;           // react-flow transform x
+  y: number;           // react-flow transform y
+  zoom: number;        // 현재 줌
+  width: number;       // 컨테이너 px
+  height: number;      // 컨테이너 px
+  centerX: number;     // Flow 좌표계 기준 화면 중심 X
+  centerY: number;     // Flow 좌표계 기준 화면 중심 Y
+};
+
+
 interface NetworkDiagramProps {
   nodes: Node[];
   edges: Edge[];
@@ -30,6 +42,7 @@ interface NetworkDiagramProps {
   keyboardNavigationEnabled?: boolean;
   isPinging?: boolean;
   onZoomChange?: (zoomLevel: number) => void;
+  onViewportChange?: (info: ViewportInfo) => void;
 }
 
 // 개발 환경 감지 - 디버깅 로그 활성화 여부 결정
@@ -65,6 +78,7 @@ const NetworkDiagram = React.memo(function NetworkDiagram({
   keyboardNavigationEnabled = true,
   isPinging = false,
   onZoomChange,
+  onViewportChange,
 }: NetworkDiagramProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
@@ -268,26 +282,52 @@ const NetworkDiagram = React.memo(function NetworkDiagram({
     [devices]
   );
 
-  /**
+   /**
    * 뷰포트 이동/줌 이벤트 핸들러
-   * 줌 레벨 변경을 감지하여 부모 컴포넌트에 전달
+   * - zoom 변화는 onZoomChange로
+   * - 화면 중심(Flow 좌표)과 컨테이너 크기는 onViewportChange로 보고
    */
   const handleMove = useCallback(
     (_evt: unknown, viewport: { x: number; y: number; zoom: number }) => {
-      if (typeof viewport?.zoom !== "number") return;
-      if (isLocalDev) console.log(`[ZOOM] ${viewport.zoom.toFixed(3)}`);
+      const inst = reactFlowInstance.current;
+      const container = reactFlowWrapper.current;
+      if (!inst || !container) return;
 
-      if (zoomRaf.current) cancelAnimationFrame(zoomRaf.current);
-      zoomRaf.current = requestAnimationFrame(() => {
-        if (lastZoom.current !== viewport.zoom) {
-          lastZoom.current = viewport.zoom;
-          onZoomChange?.(viewport.zoom);
-        }
-        zoomRaf.current = null;
-      });
+      // 컨테이너 크기
+      const { width, height } = container.getBoundingClientRect();
+
+      // 화면 중심의 "스크린 좌표" → Flow 좌표로 변환
+      // project()는 ReactFlow 컴포넌트 좌표계 기준 스크린 px를 Flow 좌표로 변환
+      const centerInScreen = { x: width / 2, y: height / 2 };
+      const centerInFlow = inst.project(centerInScreen);
+
+      // 리포팅: viewport + 중심 좌표
+      if (typeof viewport?.zoom === "number") {
+        if (zoomRaf.current) cancelAnimationFrame(zoomRaf.current);
+        zoomRaf.current = requestAnimationFrame(() => {
+          // 1) 줌 리포트 (중복 방지)
+          if (lastZoom.current !== viewport.zoom) {
+            lastZoom.current = viewport.zoom;
+            onZoomChange?.(viewport.zoom);
+          }
+          // 2) 뷰포트 리포트
+          onViewportChange?.({
+            x: viewport.x,
+            y: viewport.y,
+            zoom: viewport.zoom,
+            width,
+            height,
+            centerX: centerInFlow.x,
+            centerY: centerInFlow.y,
+          });
+
+          zoomRaf.current = null;
+        });
+      }
     },
-    [onZoomChange]
+    [onZoomChange, onViewportChange]
   );
+
 
   /**
    * React Flow 기본 설정

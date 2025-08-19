@@ -67,21 +67,30 @@ public class ImportController : ControllerBase
             // ====================================================================
             // 3단계: 데이터베이스 Import 실행 (트랜잭션)
             // ====================================================================
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
+            var strategy = _context.Database.CreateExecutionStrategy();
+            IActionResult? actionResult = null;
+
+            await strategy.ExecuteAsync(async () =>
             {
-                await ImportToDatabase(importData);
-                await transaction.CommitAsync();
-                
-                _logger.LogInformation("데이터 Import 성공");
-                return Ok(CreateSuccessResponse("데이터가 성공적으로 업로드되었습니다."));
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "데이터 Import 중 오류 발생");
-                throw;
-            }
+                await using var tx = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    await ImportToDatabase(importData);
+                    await tx.CommitAsync();
+
+                    _logger.LogInformation("데이터 Import 성공");
+                    actionResult = Ok(CreateSuccessResponse("데이터가 성공적으로 업로드되었습니다."));
+                }
+                catch (Exception ex)
+                {
+                    await tx.RollbackAsync();
+                    _logger.LogError(ex, "데이터 Import 중 오류 발생");
+                    // 재시도 전략이 에러를 감지하도록 rethrow 필수
+                    throw;
+                }
+            });
+
+            return actionResult!; 
         }
         catch (Exception ex)
         {
@@ -168,9 +177,9 @@ public class ImportController : ControllerBase
 
         foreach (var rack in racks)
         {
-            var entity = new Rack 
-            { 
-                Name = rack.Name.Trim(), 
+            var entity = new Rack
+            {
+                Name = rack.Name.Trim(),
                 Location = rack.Location?.Trim() ?? ""
             };
 
@@ -188,7 +197,7 @@ public class ImportController : ControllerBase
     /// 장비 정보 Import 및 포트 자동 생성
     /// </summary>
     private async Task<Dictionary<string, Device>> ImportDevices(
-        List<ImportDevice> devices, 
+        List<ImportDevice> devices,
         Dictionary<string, int> rackIdMap)
     {
         var deviceMap = new Dictionary<string, Device>();
@@ -209,8 +218,8 @@ public class ImportController : ControllerBase
             // 포트 자동 생성 (1번부터 PortCount까지)
             for (int portNumber = 1; portNumber <= deviceInfo.PortCount; portNumber++)
             {
-                device.Ports.Add(new Port 
-                { 
+                device.Ports.Add(new Port
+                {
                     Name = portNumber.ToString(),
                     // Device는 EF가 자동으로 설정
                 });
@@ -220,7 +229,7 @@ public class ImportController : ControllerBase
             await _context.SaveChangesAsync(); // ID 생성 및 포트 ID 할당
 
             deviceMap[deviceInfo.Name] = device;
-            _logger.LogDebug("Device 생성: {Name} (포트 {PortCount}개)", 
+            _logger.LogDebug("Device 생성: {Name} (포트 {PortCount}개)",
                 device.Name, device.PortCount);
         }
 
@@ -235,8 +244,8 @@ public class ImportController : ControllerBase
         foreach (var cableInfo in cables)
         {
             // 케이블 엔티티 생성
-            var cable = new Cable 
-            { 
+            var cable = new Cable
+            {
                 CableId = cableInfo.CableId.Trim(),
                 Description = cableInfo.Description?.Trim()
             };
@@ -283,7 +292,7 @@ public class ImportController : ControllerBase
     /// 케이블 연결에 필요한 장비 쌍 조회
     /// </summary>
     private (Device FromDevice, Device ToDevice) GetDevicesForCable(
-        ImportCable cableInfo, 
+        ImportCable cableInfo,
         Dictionary<string, Device> deviceMap)
     {
         if (!deviceMap.TryGetValue(cableInfo.FromDevice, out var fromDevice))

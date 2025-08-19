@@ -33,10 +33,26 @@ import CustomNode from "../components/CustomNode";
 import CustomEdge from "../utils/CustomEdge";
 import { alignNodesToCalculatedCenters } from "../utils/nodeCenterCalculator";
 
+// 뷰포트 정보 (NetworkDiagram이 올려주는 값과 동일한 형태)
+type ViewportInfo = {
+  x: number;
+  y: number;
+  zoom: number;
+  width: number;
+  height: number;
+  centerX: number; // Flow 좌표계 기준 화면 중심 X
+  centerY: number; // Flow 좌표계 기준 화면 중심 Y
+};
+
+// PC 스마트 공개 임계값
+//const SMART_PC_ZOOM = 0.95; // 이 줌 이상에서만 "근처 스위치의 PC 공개"
+const SMART_PC_RADIUS = 900; // 화면 중심에서 이 반경 안에 있는 스위치를 기준으로 PC 공개 (Flow 좌표계 px)
+
 // Component config
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
 const ZOOM_HIDE_PC = 0.7;
+const SMART_PC_ZOOM = ZOOM_HIDE_PC;
 
 interface AppState {
   devices: Device[];
@@ -63,6 +79,7 @@ interface AppState {
   currentZoomLevel: number;
   keyboardNavEnabled: boolean;
   layoutedNodes: Node[];
+  viewport: ViewportInfo | null;
 }
 
 const initialState: AppState = {
@@ -86,6 +103,7 @@ const initialState: AppState = {
   currentZoomLevel: 1.0,
   keyboardNavEnabled: true,
   layoutedNodes: [],
+  viewport: null,
 };
 
 const useProblemDeviceIdSet = (show: boolean, devices: Device[]) => {
@@ -221,10 +239,9 @@ const MainPage = () => {
   );
 
   const problemCount = useMemo(
-  () => state.devices.filter((d) => d.status !== DeviceStatus.Online).length,
-  [state.devices]
-);
-
+    () => state.devices.filter((d) => d.status !== DeviceStatus.Online).length,
+    [state.devices]
+  );
 
   // 🆕 전체 상태 일괄 변경
   const handleBulkSetStatus = useCallback(
@@ -285,6 +302,29 @@ const MainPage = () => {
 
   // ────────────────── Nodes & Edges (React Flow) ──────────────────
 
+  // 스위치 -> PC 목록 매핑 (케이블 기준)
+  const switchPcMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const typeById = new Map<string, string>();
+    for (const d of state.devices) {
+      typeById.set(String(d.deviceId), (d.type ?? "pc").toLowerCase());
+    }
+    for (const c of state.cables) {
+      const a = String(c.fromDeviceId);
+      const b = String(c.toDeviceId);
+      const ta = typeById.get(a);
+      const tb = typeById.get(b);
+      if (ta === "switch" && tb === "pc") {
+        if (!map.has(a)) map.set(a, new Set());
+        map.get(a)!.add(b);
+      } else if (ta === "pc" && tb === "switch") {
+        if (!map.has(b)) map.set(b, new Set());
+        map.get(b)!.add(a);
+      }
+    }
+    return map;
+  }, [state.devices, state.cables]);
+
   /** Build ALL nodes (no filtering here!) – filtering is applied only at the final render step */
   const allNodes: Node[] = useMemo(() => {
     return state.devices.map((device) => ({
@@ -311,20 +351,25 @@ const MainPage = () => {
 
   /** Zoom-based PC hiding; during trace focus show all */
   const zoomFilteredNodes = useMemo(() => {
-  // 트레이스 중이거나 문제전용이면 PC 숨김을 끈다
-  if (state.traceFilterNodes || state.showProblemOnly) return allNodes;
+    // 트레이스 중이거나 문제전용이면 PC 숨김을 끈다
+    if (state.traceFilterNodes || state.showProblemOnly) return allNodes;
 
-  if (state.currentZoomLevel < ZOOM_HIDE_PC) {
-    const filtered = allNodes.filter((n) =>
-      ["server", "switch", "router"].includes(n.data?.type)
-    );
-    if (window.location.hostname === "localhost") {
-      console.log(`PC 노드 숨김: ${allNodes.length} -> ${filtered.length}`);
+    if (state.currentZoomLevel < ZOOM_HIDE_PC) {
+      const filtered = allNodes.filter((n) =>
+        ["server", "switch", "router"].includes(n.data?.type)
+      );
+      if (window.location.hostname === "localhost") {
+        console.log(`PC 노드 숨김: ${allNodes.length} -> ${filtered.length}`);
+      }
+      return filtered;
     }
-    return filtered;
-  }
-  return allNodes;
-}, [allNodes, state.currentZoomLevel, state.traceFilterNodes, state.showProblemOnly]);
+    return allNodes;
+  }, [
+    allNodes,
+    state.currentZoomLevel,
+    state.traceFilterNodes,
+    state.showProblemOnly,
+  ]);
 
   const baseEdges = useMemo(() => {
     //   const isRadial = state.layoutMode === LayoutMode.Radial;
@@ -411,12 +456,60 @@ const MainPage = () => {
       nodes = nodes.filter((n) => searchVisibleSet.has(n.id));
     }
 
+    // ───── 스마트 PC 공개: 스위치 근처에서만 PC 전체 공개 ─────
+    const canSmartReveal =
+      !!state.viewport &&
+      state.currentZoomLevel >= SMART_PC_ZOOM &&
+      !state.traceFilterNodes &&
+      !state.showProblemOnly &&
+      state.searchQuery.trim() === "";
+
+    if (canSmartReveal) {
+      // 레이아웃된 스위치들 중 뷰포트 중심과 가장 가까운 스위치 찾기
+      const centerX = state.viewport!.centerX;
+      const centerY = state.viewport!.centerY;
+
+      let nearestSwitch: Node | null = null;
+      let bestD2 = Number.POSITIVE_INFINITY;
+
+      for (const n of state.layoutedNodes) {
+        if (n.data?.type !== "switch") continue;
+        const dx = (n.position?.x ?? 0) - centerX;
+        const dy = (n.position?.y ?? 0) - centerY;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          nearestSwitch = n;
+        }
+      }
+
+      const radius2 = SMART_PC_RADIUS * SMART_PC_RADIUS;
+      if (nearestSwitch && bestD2 <= radius2) {
+        // 이 스위치에 연결된 PC만 공개
+        const allowedPcs =
+          switchPcMap.get(nearestSwitch.id) ?? new Set<string>();
+        nodes = nodes.filter((n) => {
+          const t = n.data?.type;
+          if (t !== "pc") return true; // 서버/스위치는 항상 표시
+          return allowedPcs.has(n.id); // 해당 스위치의 PC만
+        });
+      } else {
+        // 근처 스위치가 없으면 PC는 전부 숨김 (서버/스위치만)
+        nodes = nodes.filter((n) => n.data?.type !== "pc");
+      }
+    }
+
     return nodes;
   }, [
     state.layoutedNodes,
     problemVisibleSet,
     state.traceFilterNodes,
     searchVisibleSet,
+    state.viewport,
+    state.currentZoomLevel,
+    state.showProblemOnly,
+    state.searchQuery,
+    switchPcMap,
   ]);
 
   /** Final edges aligned to final nodes; add trace edges after overlap removal */
@@ -446,6 +539,24 @@ const MainPage = () => {
       }
     },
     [updateState]
+  );
+
+  // NetworkDiagram가 보고하는 뷰포트/줌 정보 수신
+  const handleViewportChange = useCallback(
+    (vp: ViewportInfo) => {
+      updateMultipleStates({
+        viewport: vp,
+        currentZoomLevel: vp.zoom, // 기존 로직과 동기화
+      });
+      if (window.location.hostname === "localhost") {
+        console.log(
+          `[VIEWPORT] zoom=${vp.zoom.toFixed(2)} center=(${Math.round(
+            vp.centerX
+          )}, ${Math.round(vp.centerY)})`
+        );
+      }
+    },
+    [updateMultipleStates]
   );
 
   const handleSearchSubmit = useCallback(async () => {
@@ -673,7 +784,6 @@ const MainPage = () => {
           onBulkSetStatus={handleBulkSetStatus}
           problemCount={problemCount}
         />
-        
       </div>
 
       {/* Ping error banner */}
@@ -714,6 +824,7 @@ const MainPage = () => {
             showOnlyProblems={state.showProblemOnly}
             zoomLevel={state.currentZoomLevel}
             onZoomChange={handleZoomChange}
+            onViewportChange={handleViewportChange}
           />
 
           {state.showProblemOnly && finalNodes.length === 0 && (

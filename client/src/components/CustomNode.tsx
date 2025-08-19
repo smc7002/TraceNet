@@ -17,16 +17,14 @@ import type { NodeProps } from "react-flow-renderer";
 /**
  * Network Device Custom Node Component
  *
- * 🏭 제조업 네트워크 인프라 관리 시스템의 핵심 시각화 컴포넌트
- *
- * ✨ 핵심 기능:
+ * 핵심 기능:
  * - 다양한 네트워크 디바이스 타입 지원 (서버, 스위치, PC, 라우터)
  * - 실시간 Ping 상태 모니터링 및 시각적 피드백
  * - 다중 레이아웃 모드 지원 (Dagre, Radial)
  * - 동적 Handle 위치 계산을 통한 최적화된 연결점 배치
  * - 접근성 및 사용자 경험 최적화
  *
- * 🎯 설계 목표:
+ * 설계 목표:
  * - 직관적인 네트워크 구조 파악
  * - 장애 상황 즉시 식별 가능
  * - 실시간 Ping 모니터링
@@ -36,7 +34,7 @@ import type { NodeProps } from "react-flow-renderer";
  */
 
 // ==========================================
-// 📋 타입 정의 및 인터페이스
+// 타입 정의 및 인터페이스
 // ==========================================
 
 /**
@@ -98,10 +96,10 @@ export interface CustomNodeData {
   /** IP 주소 - 네트워크 식별 및 진단용 */
   ipAddress?: string;
 
-  /** 🆕 Ping 결과 - 레이턴시 정보 (밀리초) */
+  /**  Ping 결과 - 레이턴시 정보 (밀리초) */
   latencyMs?: number | null;
 
-  /** 🆕 Ping 마지막 체크 시간 */
+  /**  Ping 마지막 체크 시간 */
   lastCheckedAt?: string;
 
   /** 확장 메타데이터 - 추후 기능 확장용 */
@@ -132,7 +130,7 @@ interface CustomNodeProps extends NodeProps {
 }
 
 // ==========================================
-// 🎨 스타일 및 시각적 설정 상수 (Ping 상태 추가)
+//  스타일 및 시각적 설정 상수 (Ping 상태 추가)
 // ==========================================
 
 /**
@@ -245,7 +243,7 @@ const RADIAL_HANDLE_STYLE = {
 };
 
 // ==========================================
-// 🎨 스타일링 유틸리티 함수들 (Ping 상태 대응)
+// 스타일링 유틸리티 함수들 (Ping 상태 대응)
 // ==========================================
 
 /**
@@ -269,7 +267,7 @@ const getStatusBgColor = (status: DeviceStatus): string =>
 /**
  * 디바이스 타입별 아이콘 컴포넌트 생성 함수
  *
- * 🎯 기능:
+ * 기능:
  * - 디바이스 타입에 따른 적절한 Lucide 아이콘 선택
  * - 상태별 색상 자동 적용
  * - 접근성을 위한 aria-hidden 속성 설정
@@ -310,7 +308,7 @@ const getDeviceIcon = (type: DeviceType, status: DeviceStatus) => {
 /**
  * 디바이스 상태별 상태 표시 아이콘 생성 함수 (Ping 상태 포함)
  *
- * 🎯 기능:
+ *  기능:
  * - Ping 결과에 따른 직관적인 시각적 피드백 제공
  * - 소형 아이콘으로 공간 효율성 확보
  * - 일관된 디자인 시스템 적용
@@ -346,7 +344,7 @@ const getStatusIcon = (status: DeviceStatus) => {
 };
 
 /**
- * 🆕 레이턴시 값에 따른 색상 클래스 반환
+ *  레이턴시 값에 따른 색상 클래스 반환
  *
  * @param latencyMs - 레이턴시 (밀리초)
  * @returns Tailwind CSS 텍스트 색상 클래스
@@ -359,7 +357,7 @@ const getLatencyColor = (latencyMs: number | null): string => {
 };
 
 /**
- * 🆕 레이턴시 표시 텍스트 생성
+ *  레이턴시 표시 텍스트 생성
  *
  * @param latencyMs - 레이턴시 (밀리초)
  * @returns 표시할 텍스트 문자열
@@ -372,7 +370,7 @@ const getLatencyText = (latencyMs: number | null): string => {
 /**
  * 노드 컨테이너의 동적 스타일 클래스 생성 함수
  *
- * 🎯 기능:
+ *  기능:
  * - 선택 상태에 따른 시각적 피드백
  * - 상태별 배경색 및 테두리 설정
  * - 호버 효과 및 트랜지션 애니메이션
@@ -483,7 +481,7 @@ function getRadialHandleOffset(
       };
 
     case Position.Bottom:
-      // 🔻 하단 Handle: 노드 아래쪽 경계에 중앙 정렬
+      // 하단 Handle: 노드 아래쪽 경계에 중앙 정렬
       return {
         bottom: `-${radius}px`,
         left: "50%",
@@ -491,7 +489,7 @@ function getRadialHandleOffset(
       };
 
     case Position.Left:
-      // ◀️ 좌측 Handle: 노드 왼쪽 경계에 중앙 정렬
+      // 좌측 Handle: 노드 왼쪽 경계에 중앙 정렬
       return {
         left: `-${radius}px`,
         top: "50%",
@@ -499,7 +497,7 @@ function getRadialHandleOffset(
       };
 
     case Position.Right:
-      // ▶️ 우측 Handle: 노드 오른쪽 경계에 중앙 정렬
+      // 우측 Handle: 노드 오른쪽 경계에 중앙 정렬
       return {
         right: `-${radius}px`,
         top: "50%",
@@ -513,26 +511,26 @@ function getRadialHandleOffset(
 }
 
 // ==========================================
-// 🎯 메인 컴포넌트 구현부 (Ping 정보 표시 추가)
+// 메인 컴포넌트 구현부 (Ping 정보 표시 추가)
 // ==========================================
 
 /**
  * 커스텀 네트워크 노드 컴포넌트 (Ping 모니터링 기능 포함)
  *
- * 🏗️ 아키텍처 특징:
+ *  아키텍처 특징:
  * - React.memo를 통한 렌더링 최적화
  * - useMemo를 활용한 계산 결과 캐싱
  * - 접근성 표준 준수 (ARIA 속성)
  * - 반응형 디자인 지원
  *
- * 🔧 핵심 기능:
+ *  핵심 기능:
  * - 다중 레이아웃 모드 지원 (Dagre/Radial)
  * - 동적 Handle 위치 계산
  * - 실시간 Ping 상태 반영
  * - 레이턴시 정보 표시
  * - 키보드 네비게이션 지원
  *
- * 🎨 시각적 특징:
+ *  시각적 특징:
  * - Ping 상태별 색상 구분
  * - 부드러운 애니메이션 효과
  * - 직관적인 아이콘 시스템
@@ -629,30 +627,30 @@ function CustomNode({
         </>
       )}
 
-      {/* 🏠 노드 메인 컨테이너 */}
+      {/* 노드 메인 컨테이너 */}
       <div className={styles.container}>
-        {/* 📱 디바이스 타입 아이콘 */}
+        {/* 디바이스 타입 아이콘 */}
         {deviceIcon}
 
-        {/* 🔴 상태 표시 배지 (우상단) - Ping 상태 반영 */}
+        {/* 상태 표시 배지 (우상단) - Ping 상태 반영 */}
         <div className={styles.statusBadge}>{statusIcon}</div>
       </div>
 
-      {/* 🏷️ 노드 라벨 표시 */}
+      {/* 노드 라벨 표시 */}
       {showLabel && (
         <div className={styles.label} title={data.label}>
           {data.label}
         </div>
       )}
 
-      {/* 🌐 IP 주소 표시 (옵션) */}
+      {/* IP 주소 표시 (옵션) */}
       {showLabel && data.ipAddress && (
         <div className="text-xs text-gray-500 font-mono mt-1">
           {data.ipAddress}
         </div>
       )}
 
-      {/* 🆕 Ping 레이턴시 표시 */}
+      {/* Ping 레이턴시 표시 */}
       {showLabel && data.latencyMs !== undefined && (
         <div
           className={`text-xs font-semibold mt-1 ${getLatencyColor(
