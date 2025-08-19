@@ -88,6 +88,17 @@ const initialState: AppState = {
   layoutedNodes: [],
 };
 
+const useProblemDeviceIdSet = (show: boolean, devices: Device[]) => {
+  return useMemo<Set<string> | null>(() => {
+    if (!show) return null;
+    const set = new Set<string>();
+    for (const d of devices) {
+      if (d.status !== DeviceStatus.Online) set.add(String(d.deviceId));
+    }
+    return set;
+  }, [show, devices]);
+};
+
 const MainPage = () => {
   const [state, setState] = useState<AppState>(initialState);
   const traceTimestampRef = useRef<number>(0);
@@ -209,6 +220,12 @@ const MainPage = () => {
     [state.devices]
   );
 
+  const problemCount = useMemo(
+  () => state.devices.filter((d) => d.status !== DeviceStatus.Online).length,
+  [state.devices]
+);
+
+
   // 🆕 전체 상태 일괄 변경
   const handleBulkSetStatus = useCallback(
     async (status: DeviceStatus, enablePing?: boolean) => {
@@ -294,18 +311,20 @@ const MainPage = () => {
 
   /** Zoom-based PC hiding; during trace focus show all */
   const zoomFilteredNodes = useMemo(() => {
-    if (state.traceFilterNodes) return allNodes;
-    if (state.currentZoomLevel < ZOOM_HIDE_PC) {
-      const filtered = allNodes.filter((n) =>
-        ["server", "switch", "router"].includes(n.data?.type)
-      );
-      if (window.location.hostname === "localhost") {
-        console.log(`PC 노드 숨김: ${allNodes.length} -> ${filtered.length}`);
-      }
-      return filtered;
+  // 트레이스 중이거나 문제전용이면 PC 숨김을 끈다
+  if (state.traceFilterNodes || state.showProblemOnly) return allNodes;
+
+  if (state.currentZoomLevel < ZOOM_HIDE_PC) {
+    const filtered = allNodes.filter((n) =>
+      ["server", "switch", "router"].includes(n.data?.type)
+    );
+    if (window.location.hostname === "localhost") {
+      console.log(`PC 노드 숨김: ${allNodes.length} -> ${filtered.length}`);
     }
-    return allNodes;
-  }, [allNodes, state.currentZoomLevel, state.traceFilterNodes]);
+    return filtered;
+  }
+  return allNodes;
+}, [allNodes, state.currentZoomLevel, state.traceFilterNodes, state.showProblemOnly]);
 
   const baseEdges = useMemo(() => {
     //   const isRadial = state.layoutMode === LayoutMode.Radial;
@@ -367,17 +386,38 @@ const MainPage = () => {
     return matched;
   }, [state.searchQuery, state.devices, state.cables]);
 
-  /** Final nodes (apply trace filter and search visibility only here) */
+  // Problem-only filter set
+  const problemVisibleSet = useProblemDeviceIdSet(
+    state.showProblemOnly,
+    state.devices
+  );
+
+  /** Final nodes (apply problem-only, trace filter and search visibility only here) */
   const finalNodes = useMemo(() => {
     let nodes = state.layoutedNodes;
+
+    // Problem-only: Online이 아닌 장비만 표시
+    if (problemVisibleSet) {
+      nodes = nodes.filter((n) => problemVisibleSet.has(n.id));
+    }
+
+    // Trace 가시성(검색/문제와 AND)
     if (state.traceFilterNodes) {
       nodes = nodes.filter((n) => state.traceFilterNodes!.has(n.id));
     }
+
+    // 검색 가시성(AND)
     if (searchVisibleSet) {
       nodes = nodes.filter((n) => searchVisibleSet.has(n.id));
     }
+
     return nodes;
-  }, [state.layoutedNodes, state.traceFilterNodes, searchVisibleSet]);
+  }, [
+    state.layoutedNodes,
+    problemVisibleSet,
+    state.traceFilterNodes,
+    searchVisibleSet,
+  ]);
 
   /** Final edges aligned to final nodes; add trace edges after overlap removal */
   const finalEdges = useMemo(() => {
@@ -475,28 +515,55 @@ const MainPage = () => {
     [state.cables, updateMultipleStates]
   );
 
+  // 기존 handlePingAll을 이 버전으로 교체
   const handlePingAll = useCallback(async () => {
     if (state.isPinging) return;
+
+    // ✅ Ping OFF/ON 집계
+    const offList = state.devices.filter((d) => d.enablePing === false);
+    const onList = state.devices.filter((d) => d.enablePing !== false); // undefined는 ON 취급
+
+    // ✅ 전부 OFF면 경고 후 중단
+    if (onList.length === 0) {
+      alert(
+        "⚠️ 모든 장비에서 Ping이 비활성화되어 있어 실행할 수 없습니다.\n" +
+          "사이드패널의 Enable Ping을 켜거나 [전체 상태] 메뉴에서 ‘모두 Online + Ping ON’을 사용하세요."
+      );
+      return;
+    }
+
+    // ✅ 일부 OFF면 사용자에게 알려주고 계속할지 확인
+    if (offList.length > 0) {
+      const ok = confirm(
+        `Ping OFF 장비 ${offList.length}대를 건너뛰고 ` +
+          `나머지 ${onList.length}대만 Ping할까요?`
+      );
+      if (!ok) return;
+    }
 
     updateMultipleStates({ isPinging: true, pingError: null });
 
     try {
+      // (A) 지금처럼 백엔드가 OFF를 자체적으로 건너뛴다면 그대로 호출
       const pingResults = await pingAllDevices();
+
+      // (B) 만약 ON인 장비만 정확히 치고 싶다면,
+      // pingMultipleDevices(onList.map(d => d.deviceId)) 를 사용하세요.
+      // → 이미 /api/device/ping/multi 있으니 프런트에 함수만 있으면 됨.
+
       const updatedDevices = state.devices.map((device) => {
-        const pingResult = pingResults.find(
-          (p) => p.deviceId === device.deviceId
-        );
-        return pingResult
+        const r = pingResults.find((p) => p.deviceId === device.deviceId);
+        return r
           ? {
               ...device,
-              status: (pingResult.status as any) ?? DeviceStatus.Unknown,
-              lastCheckedAt: pingResult.checkedAt,
+              status: (r.status as any) ?? device.status,
+              lastCheckedAt: r.checkedAt,
             }
           : device;
       });
-      updateState("devices", updatedDevices);
 
-      // keep selection highlight consistent after ping
+      updateState("devices", updatedDevices);
+      // 선택 유지
       updateState(
         "layoutedNodes",
         state.layoutedNodes.map((n) => ({
@@ -505,11 +572,10 @@ const MainPage = () => {
         }))
       );
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "전체 Ping 중 오류가 발생했습니다.";
-      updateState("pingError", message);
+      updateState(
+        "pingError",
+        err instanceof Error ? err.message : "전체 Ping 중 오류가 발생했습니다."
+      );
     } finally {
       updateState("isPinging", false);
     }
@@ -605,7 +671,9 @@ const MainPage = () => {
           }
           searchError={state.searchError}
           onBulkSetStatus={handleBulkSetStatus}
+          problemCount={problemCount}
         />
+        
       </div>
 
       {/* Ping error banner */}
@@ -647,6 +715,13 @@ const MainPage = () => {
             zoomLevel={state.currentZoomLevel}
             onZoomChange={handleZoomChange}
           />
+
+          {state.showProblemOnly && finalNodes.length === 0 && (
+            <div className="mt-2 mx-2 text-sm bg-white/60 text-rose-700 border border-rose-300 rounded px-3 py-2">
+              현재 표시할 <strong>문제 장비</strong>가 없습니다. (Online 외 상태
+              없음)
+            </div>
+          )}
 
           {/* Empty state */}
           {state.devices.length === 0 && (

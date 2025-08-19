@@ -143,7 +143,7 @@ export function calculateCentralNodesCenters(
 ): Map<string, NodeCenterInfo> {
   // 개발 환경에서만 로깅
   const isDebug = typeof window !== 'undefined' && window.location.hostname === 'localhost';
-  if (isDebug) console.log("🔄 중심점 계산 시작 (최적화 버전)");
+  //if (isDebug) console.log("🔄 중심점 계산 시작 (최적화 버전)");
 
   // 🚀 인덱스 생성 (한 번만)
   const edgeIndex = buildEdgeIndex(edges);

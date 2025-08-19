@@ -4,4 +4,5 @@ export enum DeviceStatus {
   Offline = 'Offline',
   Unstable = 'Unstable',
   Unknown = 'Unknown',
+  Unreachable = 'Unreachable',
 }

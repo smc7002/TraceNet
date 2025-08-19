@@ -1,6 +1,7 @@
 // src/types/device.ts
 
 import type { Port } from "../types/port";
+import { DeviceStatus } from "./status";
 
 export interface Device {
   deviceId: number;
@@ -11,6 +12,6 @@ export interface Device {
   portCount: number;
   rackId: number;
   enablePing: boolean;
-  status: 'Online' | 'Offline' | 'Unstable' | 'Unknown';
+  status: DeviceStatus;
   lastCheckedAt: string; // or Date if parsed
 }

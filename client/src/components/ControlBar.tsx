@@ -25,6 +25,7 @@ interface ControlBarProps {
   onBulkSetStatus: (status: DeviceStatus, enablePing?: boolean) => Promise<void> | void;
   /** 진행중 표시(선택) — 없으면 isPinging 사용 */
   isBusy?: boolean;
+  problemCount?: number;
 }
 
 export default function ControlBar({
@@ -40,10 +41,9 @@ export default function ControlBar({
   //keyboardNavEnabled,
   //onToggleKeyboardNav,
   searchError,
-
-  // 🆕 추가 props
   onBulkSetStatus,
   isBusy,
+  problemCount = 0,
 }: ControlBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [openBulk, setOpenBulk] = useState(false);
@@ -124,14 +124,15 @@ export default function ControlBar({
       {/* 문제만 토글 */}
       <button
         onClick={onToggleProblemOnly}
-        disabled={busy}
+        disabled={busy || problemCount === 0}
+        aria-pressed={showProblemOnly}
         className={`px-3 py-2 rounded-md text-sm border ${
           showProblemOnly
             ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
             : "bg-white text-gray-800 border-slate-300 hover:bg-slate-100"
         } disabled:opacity-50 disabled:cursor-not-allowed transition`}
       >
-        🔍 문제 장비만
+        🔍 문제 장비만{problemCount ? ` (${problemCount})` : ""}
       </button>
 
       {/* 전체 상태 드롭다운 */}
@@ -142,7 +143,7 @@ export default function ControlBar({
           onClick={() => setOpenBulk((v) => !v)}
           className="px-3 py-2 rounded-md text-sm border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
-          ⚙️ 전체 상태
+          ⚙️ 상태 변경
         </button>
 
         {openBulk && (
