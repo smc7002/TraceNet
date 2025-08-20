@@ -257,7 +257,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 포트 연결의 유효성을 검사합니다. 양방향 연결을 모두 고려합니다.
+        /// 포트 연결의 유효성을 검사합니다.
         /// </summary>
         private static List<(Device nextDevice, Cable cable, Port nextPort)> GetValidConnections(Port port)
         {

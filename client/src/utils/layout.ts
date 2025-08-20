@@ -340,7 +340,7 @@ export function getNewRadialLayoutedElements(
     // 현재 스위치에 연결된 PC 찾기
     const connectedPCs = inputEdges
       .filter((e) => {
-        // 양방향 연결 확인 (source ↔ target)
+        // 연결 확인 (source ↔ target)
         const isSourceSwitch = e.source === sw.id;
         const isTargetSwitch = e.target === sw.id;
         const connectedId = isSourceSwitch

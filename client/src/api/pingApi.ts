@@ -1,4 +1,4 @@
-// 📁 src/api/pingApi.ts
+// 📁 src/api/pingApi.ts // 추후 ping 기능 네트워크 연결시 사용
 
 import axios from "axios";
 import type {

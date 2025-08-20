@@ -387,7 +387,7 @@ const getLatencyText = (latencyMs: number | null): string => {
  * @returns 스타일 클래스 객체
  */
 
-// 🎨 노드 타입별 라벨 스타일 상수 정의
+// 노드 타입별 라벨 스타일 상수 정의
 const LABEL_STYLES = {
   server:
     "mt-2 text-xs font-black text-white bg-blue-900/90 backdrop-blur-sm px-3 py-1.5 rounded-lg text-center max-w-24 truncate shadow-lg border border-white/20",
@@ -449,7 +449,7 @@ const getNodeStyles = (
 /**
  * 방사형 레이아웃에서 Handle의 정확한 위치 계산 함수
  *
- * 🧮 수학적 계산:
+ *  수학적 계산:
  * - 노드의 원형 경계선에 Handle을 정확히 위치시킴
  * - 각 방향별로 적절한 오프셋 값 계산
  * - CSS transform을 활용한 중심점 정렬
@@ -541,27 +541,27 @@ function CustomNode({
   selected = false,
   targetPosition = Position.Top,
 }: CustomNodeProps) {
-  // ⚙️ 컴포넌트 설정 추출
+  //  컴포넌트 설정 추출
   const showLabel = data.showLabel ?? true;
   const mode = data.mode || "dagre";
   const type = data.type;
   const status = data.status;
 
-  // 🎨 스타일 객체 메모이제이션 (리렌더링 최적화)
+  //  스타일 객체 메모이제이션 (리렌더링 최적화)
   const styles = useMemo(
     () => getNodeStyles(selected, data.highlighted === true, status, type),
     [selected, data.highlighted, status, type]
   );
 
-  // 🖼️ 아이콘 컴포넌트 메모이제이션
+  //  아이콘 컴포넌트 메모이제이션
   const deviceIcon = useMemo(() => getDeviceIcon(type, status), [type, status]);
   const statusIcon = useMemo(() => getStatusIcon(status), [status]);
 
-  // 🔌 레이아웃 모드별 Handle 스타일 결정
+  //  레이아웃 모드별 Handle 스타일 결정
   const dagreHandleStyle =
     mode === "dagre" ? HANDLE_STYLE : RADIAL_HANDLE_STYLE;
 
-  // 📍 방사형 레이아웃용 Handle 위치 계산
+  //  방사형 레이아웃용 Handle 위치 계산
   const targetOffset =
     mode === "radial" ? getRadialHandleOffset(targetPosition, type) : {};
 
@@ -575,7 +575,7 @@ function CustomNode({
       }`}
       aria-selected={selected}
     >
-      {/* 🎯 Target Handle - 입력 연결점 */}
+      {/*  Target Handle - 입력 연결점 */}
       <Handle
         type="target"
         position={targetPosition}
@@ -586,7 +586,7 @@ function CustomNode({
         }}
       />
 
-      {/* 🎯 Central Handle - 중앙 연결점 (방사형 전용) */}
+      {/*  Central Handle - 중앙 연결점 (방사형 전용) */}
       <Handle
         type="source"
         position={Position.Bottom}
@@ -600,7 +600,7 @@ function CustomNode({
         }}
       />
 
-      {/* 🌟 Server Node Special Handles (방사형 모드 전용) */}
+      {/*  Server Node Special Handles (방사형 모드 전용) */}
       {mode === "radial" && type === "server" && (
         <>
           {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => {
@@ -669,5 +669,5 @@ function CustomNode({
   );
 }
 
-// 🚀 성능 최적화: React.memo로 불필요한 리렌더링 방지
+// 성능 최적화: React.memo로 불필요한 리렌더링 방지
 export default memo(CustomNode);

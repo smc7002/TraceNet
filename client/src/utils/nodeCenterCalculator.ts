@@ -86,7 +86,7 @@ function buildEdgeIndex(edges: Edge[]): Map<string, Edge[]> {
     }
     edgeIndexCache.get(edge.source)!.push(edge);
     
-    // target 노드용 인덱스 추가 (양방향 지원)
+    // target 노드용 인덱스 추가
     if (!edgeIndexCache.has(edge.target)) {
       edgeIndexCache.set(edge.target, []);
     }
@@ -426,7 +426,6 @@ export function getCacheStats() {
 // ==========================================
 
 /**
- * 유지보수 및 최적화 가이드
  * 
  * 1. 성능 튜닝:
  *    - NODE_SIZES: CustomNode 컴포넌트 크기 변경 시 동기화 필요
