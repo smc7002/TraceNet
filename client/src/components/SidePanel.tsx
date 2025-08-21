@@ -432,10 +432,21 @@ function DeviceBasicInfo({ device }: { device: Device }) {
       <div className="space-y-2">
         <InfoItem label="IP 주소" value={device.ipAddress ?? "-"} />
         <InfoItem label="장비 유형" value={device.type ?? "-"} />
+
+        {/* 스위치일 경우에만 Rack 표시 */}
+        {device.type?.toLowerCase() === "switch" && (
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-400 text-xs">Rack</span>
+            <span className="text-slate-500 text-xs">
+              {device.rackName ?? "-"}
+            </span>
+          </div>
+        )}
       </div>
     </section>
   );
 }
+
 
 /* ───────── 포트 연결 상태 ───────── */
 

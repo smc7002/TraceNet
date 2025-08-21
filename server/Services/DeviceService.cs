@@ -29,9 +29,11 @@ namespace TraceNet.Services
         /// <summary>
         /// 전체 디바이스 목록 + 포트 포함 조회
         /// </summary>
+        // GetAllAsync() — ONLY change: Include(d => d.Rack)
         public async Task<List<DeviceDto>> GetAllAsync()
         {
             var devices = await _context.Devices
+                .Include(d => d.Rack)
                 .Include(d => d.Ports)
                     .ThenInclude(p => p.Connection)
                         .ThenInclude(c => c.ToPort)
@@ -53,6 +55,7 @@ namespace TraceNet.Services
 
             return _mapper.Map<List<DeviceDto>>(devices);
         }
+
 
         /// <summary>
         /// 새로운 디바이스 등록 + 포트 자동 생성
@@ -319,6 +322,7 @@ namespace TraceNet.Services
         public async Task<DeviceDto?> GetWithStatusAsync(int deviceId)
         {
             var device = await _context.Devices
+                .Include(d => d.Rack)
                 .Include(d => d.Ports)
                     .ThenInclude(p => p.Connection)
                         .ThenInclude(c => c.ToPort)

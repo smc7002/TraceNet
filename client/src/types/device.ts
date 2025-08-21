@@ -34,8 +34,11 @@ export interface Device {
   /** 총 포트 수 (물리적 포트 개수, 1~999) */
   portCount: number;
   
-  /** 랙 ID (Switch는 필수, 다른 장비는 선택사항) */
+  /** 랙 ID (Switch는 필수) */
   rackId: number;
+
+   /** 랙 이름 (Switch 전용, 백엔드에서 내려옴) */
+  rackName?: string;
   
   /** Ping 모니터링 활성화 여부 (전체 Ping 시 이 장비 포함할지 결정) */
   enablePing: boolean;
