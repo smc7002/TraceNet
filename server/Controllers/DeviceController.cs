@@ -89,7 +89,7 @@ namespace TraceNet.Controllers
 
             var createdDto = _mapper.Map<DeviceDto>(created);
 
-            // ✅ 단건 조회 엔드포인트로 Location 설정
+            // 단건 조회 엔드포인트로 Location 설정
             return CreatedAtAction(nameof(GetDevice), new { id = createdDto.DeviceId }, createdDto);
         }
 
@@ -112,6 +112,20 @@ namespace TraceNet.Controllers
             {
                 throw new ApplicationException("장비 삭제 중 오류 발생", ex);
             }
+        }
+
+        /// <summary>모든 장비/포트/케이블 연결/케이블 삭제</summary>
+        [HttpDelete("all")]
+        public async Task<IActionResult> DeleteAll()
+        {
+            var result = await _deviceService.DeleteAllAsync();
+            return Ok(new
+            {
+                deletedDevices = result.deletedDevices,
+                deletedPorts = result.deletedPorts,
+                deletedConnections = result.deletedConnections,
+                deletedCables = result.deletedCables
+            });
         }
 
         // ===== 상태 변경 =====

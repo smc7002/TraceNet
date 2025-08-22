@@ -1,5 +1,5 @@
 // TraceNetDbContext.cs
-// TraceNet 프로젝트의 Entity Framework Core 데이터베이스 컨텍스트
+// 프로젝트의 Entity Framework Core 데이터베이스 컨텍스트
 
 using Microsoft.EntityFrameworkCore;
 using TraceNet.Models;
@@ -45,7 +45,7 @@ namespace TraceNet.Data
         /// </summary>
         public DbSet<CableConnection> CableConnections => Set<CableConnection>();
 
-        public DbSet<Rack> Racks { get; set; }
+        public DbSet<Rack> Racks => Set<Rack>();
 
 
         /// <summary>
@@ -78,20 +78,20 @@ namespace TraceNet.Data
                 .HasOne(cc => cc.FromPort)              // CableConnection이 하나의 FromPort를 가짐
                 .WithMany()                            // Port는 여러 CableConnection을 가질 수 있음
                 .HasForeignKey(cc => cc.FromPortId)     // FromPortId가 외래키
-                .OnDelete(DeleteBehavior.Restrict);     // Port 삭제 시 연결된 CableConnection이 있으면 삭제 방지
+                .OnDelete(DeleteBehavior.Cascade);     // Port 삭제 시 연결된 CableConnection이 있으면 삭제 방지
 
             modelBuilder.Entity<CableConnection>()
-.HasOne(cc => cc.ToPort)
-.WithMany()
-.HasForeignKey(cc => cc.ToPortId)
-.OnDelete(DeleteBehavior.Restrict);
+                .HasOne(cc => cc.ToPort)
+                .WithMany()
+                .HasForeignKey(cc => cc.ToPortId)
+                .OnDelete(DeleteBehavior.Cascade);
 
-            // 🔗 Rack ↔ Device 관계 (단, Switch만 사용)
+            // Rack ↔ Device 관계 (단, Switch만 사용)
             modelBuilder.Entity<Rack>()
                 .HasMany(r => r.Devices)
                 .WithOne(d => d.Rack)
                 .HasForeignKey(d => d.RackId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.SetNull);
 
             // 정방향 1:1 (Port.Connection → CableConnection.FromPort)
             modelBuilder.Entity<Port>()

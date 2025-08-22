@@ -78,7 +78,8 @@ namespace server.Migrations
                         .HasColumnType("bit");
 
                     b.Property<string>("IPAddress")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime?>("LastCheckedAt")
                         .HasColumnType("datetime2");
@@ -98,7 +99,8 @@ namespace server.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -174,7 +176,7 @@ namespace server.Migrations
                     b.HasOne("TraceNet.Models.Port", "ToPort")
                         .WithMany()
                         .HasForeignKey("ToPortId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Cable");
@@ -189,7 +191,7 @@ namespace server.Migrations
                     b.HasOne("TraceNet.Models.Rack", "Rack")
                         .WithMany("Devices")
                         .HasForeignKey("RackId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Rack");
                 });

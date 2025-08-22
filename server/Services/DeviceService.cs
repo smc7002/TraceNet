@@ -28,34 +28,42 @@ namespace TraceNet.Services
 
         /// <summary>
         /// 전체 디바이스 목록 + 포트 포함 조회
+        /// 
+        /// 성능 최적화:
+        /// - AsSplitQuery(): 복잡한 Include 관계를 여러 쿼리로 분할하여 N+1 문제 방지
+        /// - AsNoTracking(): 읽기 전용으로 변경 추적 비활성화하여 메모리 절약
+        /// 
+        /// Include 구조: Device → Ports → Connection → ToPort → ToDevice
         /// </summary>
-        // GetAllAsync() — ONLY change: Include(d => d.Rack)
         public async Task<List<DeviceDto>> GetAllAsync()
         {
+            // 복합 Include 쿼리 - 전체 네트워크 토폴로지 조회
             var devices = await _context.Devices
-                .Include(d => d.Rack)
-                .Include(d => d.Ports)
-                    .ThenInclude(p => p.Connection)
-                        .ThenInclude(c => c.ToPort)
-                            .ThenInclude(p => p.Device)
-                .AsSplitQuery()
-                .AsNoTracking()
+            .Include(d => d.Rack)
+                .Include(d => d.Ports)                    // 장비의 모든 포트
+                    .ThenInclude(p => p.Connection)       // 각 포트의 연결 정보
+                        .ThenInclude(c => c.ToPort)       // 연결 대상 포트
+                            .ThenInclude(p => p.Device)   // 연결 대상 장비
+                .AsSplitQuery()    // 복잡한 관계를 여러 쿼리로 분할
+                .AsNoTracking()    // 변경 추적 비활성화 (읽기 전용)
                 .ToListAsync();
 
+            // 디버깅용 연결 관계 검증 루프
             foreach (var device in devices)
             {
                 foreach (var port in device.Ports)
                 {
                     if (port.Connection != null)
                     {
+                        // 디버깅 로그
                         //Console.WriteLine($"[DEBUG] Port {port.PortId} → ToPort {port.Connection.ToPort?.PortId} / ToDevice {port.Connection.ToPort?.Device?.DeviceId}");
                     }
                 }
             }
 
+            // Entity → DTO 변환 (AutoMapper 사용)
             return _mapper.Map<List<DeviceDto>>(devices);
         }
-
 
         /// <summary>
         /// 새로운 디바이스 등록 + 포트 자동 생성
@@ -72,20 +80,36 @@ namespace TraceNet.Services
 
                 for (int i = 0; i < device.PortCount; i++)
                 {
-                    device.Ports.Add(new Port { Name = $"Port {i + 1}" });
+                    device.Ports.Add(new Port { Name = (i + 1).ToString() });
                 }
             }
 
+            // 기존:
+            // if (!string.Equals(device.Type, "Switch", StringComparison.OrdinalIgnoreCase))
+            // {
+            //     device.RackId = null;
+            // }
+            // else
+            // {
+            //     bool rackExists = await _context.Racks.AnyAsync(r => r.RackId == device.RackId);
+            //     if (!rackExists)
+            //         return null;
+            // }
+
             if (!string.Equals(device.Type, "Switch", StringComparison.OrdinalIgnoreCase))
             {
-                device.RackId = null;
+                device.RackId = null; // 스위치 외에는 무조건 null
             }
             else
             {
-                bool rackExists = await _context.Racks.AnyAsync(r => r.RackId == device.RackId);
-                if (!rackExists)
-                    return null;
+                // 스위치여도 RackId 없으면 통과(선택사항)
+                if (device.RackId.HasValue)
+                {
+                    var exists = await _context.Racks.AnyAsync(r => r.RackId == device.RackId.Value);
+                    if (!exists) device.RackId = null; // 이상한 값 오면 무시
+                }
             }
+
 
             _context.Devices.Add(device);
             await _context.SaveChangesAsync();
@@ -102,41 +126,67 @@ namespace TraceNet.Services
         {
             var device = await _context.Devices
                 .Include(d => d.Ports)
-                    .ThenInclude(p => p.Connection)
                 .FirstOrDefaultAsync(d => d.DeviceId == deviceId);
 
-            if (device == null)
-                return false;
+            if (device == null) return false;
 
-            // 연결된 케이블 ID 수집
-            var connectionsToDelete = device.Ports
-                .Where(p => p.Connection != null)
-                .Select(p => p.Connection!)
-                .ToList();
+            // 이 장비의 모든 포트 ID
+            var portIds = device.Ports.Select(p => p.PortId).ToList();
+
+            // FromPort 또는 ToPort 로 물린 모든 케이블 연결 수집
+            var connectionsToDelete = await _context.CableConnections
+                .Where(cc => portIds.Contains(cc.FromPortId) || portIds.Contains(cc.ToPortId))
+                .ToListAsync();
 
             var cableIds = connectionsToDelete
                 .Select(c => c.CableId)
                 .Distinct()
                 .ToList();
 
-            // 1. CableConnection 삭제
+            // 1) 연결 삭제
             _context.CableConnections.RemoveRange(connectionsToDelete);
 
-            // 2. Port 삭제
-            _context.Ports.RemoveRange(device.Ports);
-
-            // 3. Cable 삭제
+            // 2) 케이블 삭제 (연결 지운 뒤)
             var cablesToDelete = await _context.Cables
                 .Where(c => cableIds.Contains(c.CableId))
                 .ToListAsync();
             _context.Cables.RemoveRange(cablesToDelete);
 
-            // 4. Device 삭제
+            // 3) 포트 삭제
+            _context.Ports.RemoveRange(device.Ports);
+
+            // 4) 장비 삭제
             _context.Devices.Remove(device);
 
             await _context.SaveChangesAsync();
             return true;
         }
+
+        /// <summary>
+        /// 모든 장비를 기존 DeleteAsync(deviceId) 로직을 재사용해 순차 삭제.
+        /// 이미 검증된 단일 삭제 경로를 그대로 이용하므로 안전함.
+        /// </summary>
+        public async Task<(int deletedDevices, int deletedPorts, int deletedConnections, int deletedCables)> DeleteAllAsync()
+        {
+            // 삭제 전 개수 취합 
+            var totalPorts = await _context.Ports.CountAsync();
+            var totalConnections = await _context.CableConnections.CountAsync();
+            var totalCables = await _context.Cables.CountAsync();
+
+            // 장비 ID만 가볍게 조회
+            var ids = await _context.Devices.Select(d => d.DeviceId).ToListAsync();
+            int ok = 0;
+
+            // 기존 검증된 삭제 루틴 재사용
+            foreach (var id in ids)
+            {
+                var success = await DeleteAsync(id);
+                if (success) ok++;
+            }
+
+            return (ok, totalPorts, totalConnections, totalCables);
+        }
+
 
         /// <summary>
         /// 단일 장비 Ping 실행
@@ -322,7 +372,7 @@ namespace TraceNet.Services
         public async Task<DeviceDto?> GetWithStatusAsync(int deviceId)
         {
             var device = await _context.Devices
-                .Include(d => d.Rack)
+            .Include(d => d.Rack)
                 .Include(d => d.Ports)
                     .ThenInclude(p => p.Connection)
                         .ThenInclude(c => c.ToPort)
@@ -372,33 +422,52 @@ namespace TraceNet.Services
 
         /// <summary>
         /// 다수 장비 상태 일괄 업데이트
+        /// 
+        /// 처리 로직:
+        /// 1. 중복 deviceId 제거 (마지막 요청이 우선)
+        /// 2. 존재하는 장비만 필터링
+        /// 3. 상태값 정규화 및 검증
+        /// 4. 일괄 업데이트 후 단일 SaveChanges 호출
+        /// 
+        /// 단일 트랜잭션으로 DB roundtrip 최소화
+        /// ControlBar "상태 변경" 드롭다운에서 전체 장비 일괄 처리
         /// </summary>
         public async Task<int> UpdateStatusBulkAsync(IEnumerable<(int deviceId, string status, bool? enablePing)> items)
         {
             var list = items.ToList();
             if (list.Count == 0) return 0;
 
+            // 대상 장비 ID 수집 (중복 제거)
             var ids = list.Select(i => i.deviceId).Distinct().ToList();
-            var devices = await _context.Devices.Where(d => ids.Contains(d.DeviceId)).ToListAsync();
-            var map = items
-            .GroupBy(i => i.deviceId)
-            .ToDictionary(g => g.Key, g => g.Last());
 
+            // 존재하는 장비만 조회 (존재하지 않는 ID는 무시)
+            var devices = await _context.Devices.Where(d => ids.Contains(d.DeviceId)).ToListAsync();
+
+            // 중복 deviceId 처리: 마지막 요청이 우선 적용
+            var map = items
+                .GroupBy(i => i.deviceId)
+                .ToDictionary(g => g.Key, g => g.Last());
+
+            // 각 장비에 대해 상태 업데이트 적용
             foreach (var d in devices)
             {
                 var req = map[d.DeviceId];
+
+                // 상태값 정규화 (대소문자 통일: "online" → "Online")
                 var normalized = NormalizeStatus(req.status);
                 if (!AllowedStatuses.Contains(normalized))
                     throw new ArgumentException($"허용되지 않는 상태: {req.status}");
 
+                // 장비 상태 업데이트
                 d.Status = normalized;
                 if (req.enablePing.HasValue) d.EnablePing = req.enablePing.Value;
                 d.LastCheckedAt = DateTime.UtcNow;
-                d.LatencyMs = null;
+                d.LatencyMs = null;  // 수동 상태 변경이므로 레이턴시 초기화
             }
 
+            // 모든 변경사항을 한 번에 저장 (transaction 효율성)
             await _context.SaveChangesAsync();
-            return devices.Count;
+            return devices.Count;  // 실제 업데이트된 장비 수 반환
         }
     }
 }

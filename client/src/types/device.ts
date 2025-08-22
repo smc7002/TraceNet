@@ -18,11 +18,11 @@ export interface Device {
   /** 장비 이름 (예: "서버실-PC-01", "SW-Core-01") */
   name: string;
   
-  /** 장비 유형 (PC/Switch/Server/Router/Firewall/AP/NAS/Printer/CCTV) */
+  /** 장비 유형  */
   type: string;
   
   /** IP 주소 (예: "192.168.1.100", DHCP인 경우 빈 값 가능) */
-  ipAddress: string;
+  ipAddress?: string | null;
   
   /** 
    * 소속 포트 목록 (선택적 조인)
@@ -35,7 +35,7 @@ export interface Device {
   portCount: number;
   
   /** 랙 ID (Switch는 필수) */
-  rackId: number;
+  rackId?: number | null;
 
    /** 랙 이름 (Switch 전용, 백엔드에서 내려옴) */
   rackName?: string;
@@ -47,5 +47,5 @@ export interface Device {
   status: DeviceStatus;
   
   /** 마지막 상태 확인 시간 (ISO 문자열, 파싱하면 Date 객체로 사용) */
-  lastCheckedAt: string;
+  lastCheckedAt?: string | null;
 }
