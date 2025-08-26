@@ -652,7 +652,7 @@ const NetworkDiagram = React.memo(function NetworkDiagram({
         >
           <div>화살표: 화면 이동</div>
           <div>Ctrl + +/-: 줌</div>
-          <div>Ctrl + 0: 전체보기</div>
+          {/* <div>Ctrl + 0: 전체보기</div> */}
           <div>Ctrl + Home: 서버 중심</div>
         </div>
       )}

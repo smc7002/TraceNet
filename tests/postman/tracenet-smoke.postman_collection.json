@@ -99,7 +99,7 @@
       ],
       "request": {
         "method": "GET",
-        "url": { "raw": "{{BASE_URL}}/api/cables", "host": ["{{BASE_URL}}"], "path": ["api", "cables"] }
+        "url": { "raw": "{{BASE_URL}}/api/cable", "host": ["{{BASE_URL}}"], "path": ["api", "cables"] }
       }
     },
     {

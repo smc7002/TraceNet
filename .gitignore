@@ -35,8 +35,10 @@ coverage/
 *.test.ts
 *.spec.ts
 
-# docs
+# docs (except official guides)
 docs/
+!사용가이드.md
+!설치가이드.md
 
 # etc
 .cache/
@@ -52,8 +54,21 @@ server/obj/
 # Rider / Resharper
 _ReSharper.Caches/
 
-# EF Core Migrations Snapshots (optional, if generated)
+# EF Core Migrations Snapshots (optional)
 *.dbmdl
 
 # Windows junk
 Thumbs.db
+
+# --- Custom Project Rules ---
+
+# Sample data files
+import_sample_*.json
+sample_uploads/
+
+# Personal devlogs
+TraceNet*.md
+
+# Postman collections (only ignore personal ones)
+*.postman_collection.json
+!postman/official_*.postman_collection.json

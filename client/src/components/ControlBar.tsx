@@ -255,7 +255,7 @@ export default function ControlBar({
         title="모든 장비/포트/케이블 삭제"
       >
         {deleting ? "삭제 중..." : "전체 삭제"}
-      </button>
+      </button>  
 
       {/* 실시간 상태 통계 표시 */}
       <div
