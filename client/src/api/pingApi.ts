@@ -11,7 +11,7 @@ import type {
 } from "../types/ping";
 
 // API 기본 URL 설정 - 실제 배포 시 환경변수로 변경
-const API_BASE = "http://localhost:5285/api";
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "/api").replace(/\/$/, "");
 
 /**
  * 단일 장비에 대한 Ping 테스트를 수행합니다.

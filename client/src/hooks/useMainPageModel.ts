@@ -18,9 +18,13 @@ import { useSearchTrace } from "./useSearchTrace";
 import { useTopologyView } from "./useTopologyView";
 
 type ViewportInfo = {
-  x: number; y: number; zoom: number;
-  width: number; height: number;
-  centerX: number; centerY: number;
+  x: number;
+  y: number;
+  zoom: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
 };
 
 interface AppState {
@@ -88,12 +92,15 @@ const initialState: AppState = {
 export function useMainPageModel() {
   const [state, setState] = useState<AppState>(initialState);
 
-  const updateState = useCallback(<K extends keyof AppState>(key: K, value: AppState[K]) => {
-    setState(prev => ({ ...prev, [key]: value }));
-  }, []);
+  const updateState = useCallback(
+    <K extends keyof AppState>(key: K, value: AppState[K]) => {
+      setState((prev) => ({ ...prev, [key]: value }));
+    },
+    []
+  );
 
   const updateMultipleStates = useCallback((updates: Partial<AppState>) => {
-    setState(prev => ({ ...prev, ...updates }));
+    setState((prev) => ({ ...prev, ...updates }));
   }, []);
 
   // DEV/localhost에서만 FPS 오버레이
@@ -118,121 +125,192 @@ export function useMainPageModel() {
     currentZoomLevel: state.currentZoomLevel,
     traceEdges: state.traceEdges,
     traceFilterNodes: state.traceFilterNodes,
-    selectedDeviceId: state.selectedDevice ? String(state.selectedDevice.deviceId) : null,
-    viewport: state.viewport ? { centerX: state.viewport.centerX, centerY: state.viewport.centerY } : null,
+    selectedDeviceId: state.selectedDevice
+      ? String(state.selectedDevice.deviceId)
+      : null,
+    viewport: state.viewport
+      ? { centerX: state.viewport.centerX, centerY: state.viewport.centerY }
+      : null,
   });
 
   // ────────────────── 파생 데이터 ──────────────────
-  const deviceStatusCounts = useMemo(() => ({
-    [DeviceStatus.Online]: state.devices.filter(d => d.status === DeviceStatus.Online).length,
-    [DeviceStatus.Offline]: state.devices.filter(d => d.status === DeviceStatus.Offline).length,
-    [DeviceStatus.Unstable]: state.devices.filter(d => d.status === DeviceStatus.Unstable).length,
-  }), [state.devices]);
+  const deviceStatusCounts = useMemo(
+    () => ({
+      [DeviceStatus.Online]: state.devices.filter(
+        (d) => d.status === DeviceStatus.Online
+      ).length,
+      [DeviceStatus.Offline]: state.devices.filter(
+        (d) => d.status === DeviceStatus.Offline
+      ).length,
+      [DeviceStatus.Unstable]: state.devices.filter(
+        (d) => d.status === DeviceStatus.Unstable
+      ).length,
+    }),
+    [state.devices]
+  );
 
   const problemCount = useMemo(
-    () => state.devices.filter(d => d.status !== DeviceStatus.Online).length,
+    () => state.devices.filter((d) => d.status !== DeviceStatus.Online).length,
     [state.devices]
   );
 
   const filteredCables = useMemo(() => {
     const q = state.searchQuery.toLowerCase();
-    return state.cables.filter(c => {
+    return state.cables.filter((c) => {
       const id = String(c.cableId).toLowerCase();
       const desc = c.description?.toLowerCase() ?? "";
       const from = c.fromDevice.toLowerCase();
       const to = c.toDevice.toLowerCase();
-      return id.includes(q) || desc.includes(q) || from.includes(q) || to.includes(q);
+      return (
+        id.includes(q) || desc.includes(q) || from.includes(q) || to.includes(q)
+      );
     });
   }, [state.cables, state.searchQuery]);
 
   // ────────────────── 핸들러 ──────────────────
-  const handleZoomChange = useCallback((zoomLevel: number) => {
-    updateState("currentZoomLevel", zoomLevel);
-    if (window.location.hostname === "localhost") {
-      console.log(`[ZOOM] ${zoomLevel.toFixed(2)} hidePC=${zoomLevel < 0.7}`);
-    }
-  }, [updateState]);
+  const handleZoomChange = useCallback(
+    (zoomLevel: number) => {
+      updateState("currentZoomLevel", zoomLevel);
+      if (window.location.hostname === "localhost") {
+        console.log(`[ZOOM] ${zoomLevel.toFixed(2)} hidePC=${zoomLevel < 0.7}`);
+      }
+    },
+    [updateState]
+  );
 
-  const handleViewportChange = useCallback((vp: ViewportInfo) => {
-    updateMultipleStates({ viewport: vp, currentZoomLevel: vp.zoom });
-  }, [updateMultipleStates]);
+  const handleViewportChange = useCallback(
+    (vp: ViewportInfo) => {
+      updateMultipleStates({ viewport: vp, currentZoomLevel: vp.zoom });
+    },
+    [updateMultipleStates]
+  );
 
   const handleSearchSubmit = useCallback(async () => {
     await executeDeviceSearch(state.searchQuery);
   }, [executeDeviceSearch, state.searchQuery]);
 
-  const handleDeviceClick = useCallback(async (device: Device) => {
-    updateState("selectedDevice", device);
-    updateMultipleStates({ selectedCable: null, traceResult: null, traceError: null });
-    await runTraceForDevice(device);
-  }, [runTraceForDevice, updateMultipleStates, updateState]);
+  const handleDeviceClick = useCallback(
+    async (device: Device) => {
+      updateState("selectedDevice", device);
+      updateMultipleStates({
+        selectedCable: null,
+        traceResult: null,
+        traceError: null,
+      });
+      await runTraceForDevice(device);
+    },
+    [runTraceForDevice, updateMultipleStates, updateState]
+  );
 
-  const handleEdgeClick = useCallback((_: unknown, edge: Edge) => {
-    const id = edge.id;
-    if (!id.startsWith(CABLE_EDGE_PREFIX)) return;
-    const cableId = id.slice(CABLE_EDGE_PREFIX.length);
-    const found = state.cables.find(c => c.cableId === cableId);
-    if (!found) return;
-    updateMultipleStates({
-      selectedCable: found,
-      selectedDevice: null,
-    });
-    clearTrace();
-  }, [state.cables, updateMultipleStates, clearTrace]);
+  const handleEdgeClick = useCallback(
+    (_: unknown, edge: Edge) => {
+      const id = edge.id;
+      if (!id.startsWith(CABLE_EDGE_PREFIX)) return;
+      const cableId = id.slice(CABLE_EDGE_PREFIX.length);
+      const found = state.cables.find((c) => c.cableId === cableId);
+      if (!found) return;
+      updateMultipleStates({
+        selectedCable: found,
+        selectedDevice: null,
+      });
+      clearTrace();
+    },
+    [state.cables, updateMultipleStates, clearTrace]
+  );
 
   const handlePingAll = useCallback(async () => {
     if (state.isPinging) return;
-    const offList = state.devices.filter(d => d.enablePing === false);
-    const onList  = state.devices.filter(d => d.enablePing !== false);
+    const offList = state.devices.filter((d) => d.enablePing === false);
+    const onList = state.devices.filter((d) => d.enablePing !== false);
     if (onList.length === 0) {
-      alert("모든 장비에서 Ping이 비활성화되어 실행할 수 없습니다.\n사이드패널의 Enable Ping을 켜거나 [전체 상태] 메뉴에서 '모두 Online + Ping ON'을 사용하세요.");
+      alert(
+        "모든 장비에서 Ping이 비활성화되어 실행할 수 없습니다.\n사이드패널의 Enable Ping을 켜거나 [전체 상태] 메뉴에서 '모두 Online + Ping ON'을 사용하세요."
+      );
       return;
     }
     if (offList.length > 0) {
-      const ok = confirm(`Ping OFF 장비 ${offList.length}대를 건너뛰고 나머지 ${onList.length}대만 Ping할까요?`);
+      const ok = confirm(
+        `Ping OFF 장비 ${offList.length}대를 건너뛰고 나머지 ${onList.length}대만 Ping할까요?`
+      );
       if (!ok) return;
     }
     updateMultipleStates({ isPinging: true, pingError: null });
     try {
       const pingResults = await pingAllDevices();
-      const updated = state.devices.map(device => {
-        const r = pingResults.find(p => p.deviceId === device.deviceId);
-        return r ? { ...device, status: (r.status as any) ?? device.status, lastCheckedAt: r.checkedAt } : device;
+      const updated = state.devices.map((device) => {
+        const r = pingResults.find((p) => p.deviceId === device.deviceId);
+        return r
+          ? {
+              ...device,
+              status: (r.status as any) ?? device.status,
+              lastCheckedAt: r.checkedAt,
+            }
+          : device;
       });
       updateState("devices", updated);
       // (호환) 선택 상태 유지 위해 layoutedNodes도 갱신
-      updateState("layoutedNodes",
-        finalNodes.map(n => ({ ...n, selected: state.selectedDevice?.deviceId.toString() === n.id }))
+      updateState(
+        "layoutedNodes",
+        finalNodes.map((n) => ({
+          ...n,
+          selected: state.selectedDevice?.deviceId.toString() === n.id,
+        }))
       );
     } catch (err) {
-      updateState("pingError", err instanceof Error ? err.message : "전체 Ping 중 오류가 발생했습니다.");
+      updateState(
+        "pingError",
+        err instanceof Error ? err.message : "전체 Ping 중 오류가 발생했습니다."
+      );
     } finally {
       updateState("isPinging", false);
     }
-  }, [state.isPinging, state.devices, state.selectedDevice, finalNodes, updateState, updateMultipleStates]);
+  }, [
+    state.isPinging,
+    state.devices,
+    state.selectedDevice,
+    finalNodes,
+    updateState,
+    updateMultipleStates,
+  ]);
 
-  const handleBulkSetStatus = useCallback(async (status: DeviceStatus, enablePing?: boolean) => {
-    const ids = state.devices.map(d => d.deviceId);
-    if (ids.length === 0) { alert("변경할 장비가 없습니다."); return; }
-    const human = `${status}` + (enablePing !== undefined ? `, Ping ${enablePing ? "ON" : "OFF"}` : "");
-    if (!confirm(`전체 ${ids.length}대 장비를 "${human}" 으로 변경할까요?`)) return;
+  const handleBulkSetStatus = useCallback(
+    async (status: DeviceStatus, enablePing?: boolean) => {
+      const ids = state.devices.map((d) => d.deviceId);
+      if (ids.length === 0) {
+        alert("변경할 장비가 없습니다.");
+        return;
+      }
+      const human =
+        `${status}` +
+        (enablePing !== undefined ? `, Ping ${enablePing ? "ON" : "OFF"}` : "");
+      if (!confirm(`전체 ${ids.length}대 장비를 "${human}" 으로 변경할까요?`))
+        return;
 
-    updateMultipleStates({ isPinging: true, pingError: null });
-    try {
-      await updateDeviceStatusBulk({ deviceIds: ids, status, enablePing });
-      const now = new Date().toISOString();
-      const newDevices = state.devices.map(d => ({
-        ...d, status, enablePing: enablePing ?? d.enablePing, lastCheckedAt: now, latencyMs: null,
-      }));
-      updateState("devices", newDevices);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "일괄 상태 변경 중 오류가 발생했습니다.";
-      alert(message);
-      updateState("pingError", message);
-    } finally {
-      updateState("isPinging", false);
-    }
-  }, [state.devices, updateMultipleStates, updateState]);
+      updateMultipleStates({ isPinging: true, pingError: null });
+      try {
+        await updateDeviceStatusBulk({ deviceIds: ids, status, enablePing });
+        const now = new Date().toISOString();
+        const newDevices = state.devices.map((d) => ({
+          ...d,
+          status,
+          enablePing: enablePing ?? d.enablePing,
+          lastCheckedAt: now,
+          latencyMs: null,
+        }));
+        updateState("devices", newDevices);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "일괄 상태 변경 중 오류가 발생했습니다.";
+        alert(message);
+        updateState("pingError", message);
+      } finally {
+        updateState("isPinging", false);
+      }
+    },
+    [state.devices, updateMultipleStates, updateState]
+  );
 
   const handleRefresh = useCallback(() => {
     updateState("pingError", null);
@@ -243,23 +321,51 @@ export function useMainPageModel() {
     updateMultipleStates({ selectedDevice: null, selectedCable: null });
     clearTrace();
     // (호환) 기존 selection flag 초기화
-    setState(prev => ({ ...prev, layoutedNodes: prev.layoutedNodes.map(n => ({ ...n, selected: false })) }));
+    setState((prev) => ({
+      ...prev,
+      layoutedNodes: prev.layoutedNodes.map((n) => ({ ...n, selected: false })),
+    }));
   }, [clearTrace, updateMultipleStates]);
 
   // ────────────────── Effects ──────────────────
   // 초기 데이터 로드
   useEffect(() => {
     let isMounted = true;
+
+    //alert("useMainPageModel useEffect 실행됨!");
+    //console.error("🚨🚨🚨 useMainPageModel 실행 확인용");
+
     (async () => {
       try {
-        const [deviceData, cableData] = await Promise.all([fetchDevices(), fetchCables()]);
-        if (isMounted) updateMultipleStates({ devices: deviceData, cables: cableData, loading: false });
+        console.log("🔄 데이터 로딩 시작...");
+        const [deviceData, cableData] = await Promise.all([
+          fetchDevices(),
+          fetchCables(),
+        ]);
+
+        console.log("📊 받아온 devices:", deviceData);
+        console.log("📊 devices 개수:", deviceData?.length);
+        console.log("📊 받아온 cables:", cableData);
+        console.log("📊 cables 개수:", cableData?.length);
+
+        if (isMounted) {
+          console.log("✅ state에 데이터 저장 완료");
+          updateMultipleStates({
+            devices: deviceData,
+            cables: cableData,
+            loading: false,
+          });
+        }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "알 수 없는 오류입니다.";
+        console.error("❌ 데이터 로딩 에러:", err);
+        const message =
+          err instanceof Error ? err.message : "알 수 없는 오류입니다.";
         if (isMounted) updateMultipleStates({ error: message, loading: false });
       }
     })();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [updateMultipleStates]);
 
   // (호환) 외부에서 기대할 수 있는 layoutedNodes 갱신

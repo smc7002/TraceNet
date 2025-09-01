@@ -164,3 +164,13 @@ C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\ref\ser
 C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\bin\Debug\net9.0\AutoMapper.dll
 C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\bin\Debug\net9.0\AutoMapper.Extensions.Microsoft.DependencyInjection.dll
 C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\server.sourcelink.json
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\bin\Debug\net9.0\server.staticwebassets.runtime.json
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\compressed\upfd2fyy43-evj2aihdbe.gz
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\compressed\k3irq8ansl-mia2djjdi5.gz
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\compressed\ia5yiks98n-rmdt1ceh2p.gz
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\compressed\4bw9y2o5k1-4bysstsvp2.gz
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\compressed\qw8r1bnw3k-sl60c43r8o.gz
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\compressed\beglbczc2l-8uik04z592.gz
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\compressed\35p2ef27q5-lsko59obqr.gz
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\compressed\xc5znkwlc2-j65vvuokvt.gz
+C:\Users\User\Desktop\Projects\TraceNet\TraceNet\server\obj\Debug\net9.0\compressed\hflpgo3jhw-4fk1yjn7vz.gz
