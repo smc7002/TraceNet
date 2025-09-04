@@ -1,3 +1,5 @@
+# .gitignore
+
 # logs
 logs
 *.log
@@ -30,26 +32,40 @@ build/
 *.sln
 *.sw?
 
-# tests
+# tests -------------- (CHANGED)
 coverage/
-*.test.ts
-*.spec.ts
+.nyc_output/              # added
+# DO NOT ignore test sources; keep them in repo:
+# (remove these lines that were ignoring tests)
+# *.test.ts
+# *.spec.ts
 
-# docs (except official guides)
-docs/
-!사용가이드.md
-!설치가이드.md
+# docs --------------- (CHANGED)
+# Keep portfolio assets; ignore only raw/working sources
+# (remove previous: 'docs/' + whitelists)
+docs/raw/**               # e.g., original .psd/.ai/.mp4 sources
+docs/tmp/**
+docs/**/*.psd
+docs/**/*.ai
+docs/**/*.sketch
+# keep images/GIF/markdown under docs/
+# e.g., docs/img/**, docs/gif/**, docs/*.md will be tracked
 
 # etc
 .cache/
+.eslintcache              # added
 *.tgz
 
-# backend build outputs
+# backend build outputs (keep repo clean)
 server/bin/
 server/obj/
+bin/
+obj/
 
 # Visual Studio
 .vs/
+*.user                    # added
+*.rsuser                  # added
 
 # Rider / Resharper
 _ReSharper.Caches/
@@ -57,8 +73,15 @@ _ReSharper.Caches/
 # EF Core Migrations Snapshots (optional)
 *.dbmdl
 
+# Local DB files (optional but recommended)
+*.db
+*.sqlite
+*.mdf
+*.ldf
+
 # Windows junk
 Thumbs.db
+desktop.ini              # added
 
 # --- Custom Project Rules ---
 
@@ -68,7 +91,15 @@ sample_uploads/
 
 # Personal devlogs
 TraceNet*.md
+*.md
 
-# Postman collections (only ignore personal ones)
+# Postman collections/envs (only ignore personal ones)
 *.postman_collection.json
+postman/*.postman_environment.json           # added
 !postman/official_*.postman_collection.json
+!postman/official_*.postman_environment.json # added
+
+# etc.
+**/bin/
+**/obj/
+**/*.pdb
