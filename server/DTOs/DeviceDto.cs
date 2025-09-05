@@ -3,8 +3,12 @@
 namespace TraceNet.DTOs
 {
     /// <summary>
-    /// 클라이언트 응답용 Device DTO
+    /// Device DTO for client responses.
+    /// Includes basic information such as ID, name, type, port count, 
+    /// IP address, status, latency, last check time, ping settings, 
+    /// rack association, and related ports.
     /// </summary>
+
     public class DeviceDto
     {
         public int DeviceId { get; set; }

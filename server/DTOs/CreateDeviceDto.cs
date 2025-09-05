@@ -1,7 +1,9 @@
 namespace TraceNet.DTOs
 {
     /// <summary>
-    /// 디바이스 등록용 요청 DTO
+    /// Request DTO for device registration.
+    /// Contains essential information such as name, type, number of ports, 
+    /// IP address, and optional rack association.
     /// </summary>
     public class CreateDeviceDto
     {

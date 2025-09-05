@@ -1,7 +1,9 @@
 namespace TraceNet.DTOs
 {
     /// <summary>
-    /// Ping 결과 응답 DTO
+    /// DTO representing the result of a Ping operation.
+    /// Includes device ID, name, IP address, status, latency, 
+    /// timestamp of the check, and optional error message.
     /// </summary>
     public class PingResultDto
     {

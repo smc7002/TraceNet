@@ -1,13 +1,15 @@
 // src/pages/MainPage.tsx
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import ControlBar from "../components/ControlBar";
-import NetworkDiagram from "../components/NetworkDiagram";
-import SidePanel from "../components/SidePanel";
-import LoadingSpinner from "../components/LoadingSpinner";
-import ErrorState from "../components/ErrorState";
-import CustomNode from "../components/CustomNode";
-import CustomEdge from "../components/CustomEdge";
-import { useMainPageModel } from "../hooks/useMainPageModel";
+// Main page composes the app shell (ControlBar + NetworkDiagram + SidePanel).
+// State comes from useMainPageModel; this component stays presentation-first.
+
+import ControlBar from '../components/ControlBar';
+import CustomEdge from '../components/CustomEdge';
+import CustomNode from '../components/CustomNode';
+import ErrorState from '../components/ErrorState';
+import LoadingSpinner from '../components/LoadingSpinner';
+import NetworkDiagram from '../components/NetworkDiagram';
+import SidePanel from '../components/SidePanel';
+import { useMainPageModel } from '../hooks/useMainPageModel';
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
@@ -20,44 +22,50 @@ export default function MainPage() {
   if (s.error) return <ErrorState message={s.error} onRetry={model.handleRefresh} />;
 
   return (
-    <div className="h-screen flex flex-col bg-slate-100">
+    <div className="flex h-screen flex-col bg-slate-100">
       {/* Top ControlBar */}
-      <div className="border-b border-slate-200 shrink-0">
+      <div className="shrink-0 border-b border-slate-200">
         <ControlBar
           onRefresh={model.handleRefresh}
-          onToggleProblemOnly={() => model.updateState("showProblemOnly", !s.showProblemOnly)}
+          onToggleProblemOnly={() => model.updateState('showProblemOnly', !s.showProblemOnly)}
           showProblemOnly={s.showProblemOnly}
           searchQuery={s.searchQuery}
-          onSearchChange={(value) => model.updateMultipleStates({ searchQuery: value, searchError: undefined })}
+          onSearchChange={(value) =>
+            model.updateMultipleStates({ searchQuery: value, searchError: undefined })
+          }
           onSearchSubmit={model.handleSearchSubmit}
           statusCounts={model.deviceStatusCounts}
           onPingAll={model.handlePingAll}
           isPinging={s.isPinging}
           keyboardNavEnabled={s.keyboardNavEnabled}
-          onToggleKeyboardNav={() => model.updateState("keyboardNavEnabled", !s.keyboardNavEnabled)}
+          onToggleKeyboardNav={() => model.updateState('keyboardNavEnabled', !s.keyboardNavEnabled)}
           searchError={s.searchError}
           onBulkSetStatus={model.handleBulkSetStatus}
           problemCount={model.problemCount}
         />
       </div>
 
-      {/* banners */}
+      {/* Banners */}
       {s.pingError && (
-        <div className="bg-red-50 border-l-4 border-red-400 p-3 mx-6 mt-2">
-          <div className="text-red-700 text-sm"><strong>Ping 오류:</strong> {s.pingError}</div>
+        <div className="mx-6 mt-2 border-l-4 border-red-400 bg-red-50 p-3">
+          <div className="text-sm text-red-700">
+            <strong>Ping error:</strong> {s.pingError}
+          </div>
         </div>
       )}
       {s.searchError && (
-        <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mx-6 mt-2">
-          <div className="text-amber-800 text-sm"><strong>알림:</strong> {s.searchError}</div>
+        <div className="mx-6 mt-2 border-l-4 border-amber-500 bg-amber-50 p-3">
+          <div className="text-sm text-amber-800">
+            <strong>Notice:</strong> {s.searchError}
+          </div>
         </div>
       )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Diagram */}
-        <div className="flex-1 relative bg-gradient-to-br from-indigo-400 to-purple-500 overflow-auto p-1">
+        <div className="relative flex-1 overflow-auto bg-gradient-to-br from-indigo-400 to-purple-500 p-1">
           <NetworkDiagram
-            key={s.renderKey}
+            key={s.renderKey} // force remount on layout/data resets
             nodes={model.finalNodes}
             edges={model.finalEdges}
             selectedDevice={s.selectedDevice}
@@ -76,21 +84,22 @@ export default function MainPage() {
             onViewportChange={model.handleViewportChange}
           />
 
-          {/* DEV-only FPS */}
+          {/* DEV-only FPS badge */}
           {model.showDebug && (
-            <div className="absolute left-3 top-16 z-50 text-xs px-2 py-1 rounded bg-black/60 text-white pointer-events-none">
+            <div className="pointer-events-none absolute left-3 top-16 z-50 rounded bg-black/60 px-2 py-1 text-xs text-white">
               FPS: {model.fps}
             </div>
           )}
 
+          {/* Empty states */}
           {s.showProblemOnly && model.finalNodes.length === 0 && (
-            <div className="mt-2 mx-2 text-sm bg-white/60 text-rose-700 border border-rose-300 rounded px-3 py-2">
-              현재 표시할 <strong>문제 장비</strong>가 없습니다. (Online 외 상태 없음)
+            <div className="mx-2 mt-2 rounded border border-rose-300 bg-white/60 px-3 py-2 text-sm text-rose-700">
+              There are no <strong>problem devices</strong> to display. (All devices are Online)
             </div>
           )}
           {s.devices.length === 0 && (
-            <div className="mt-6 text-white text-center text-sm bg-black/30 rounded p-2">
-              장비가 없습니다. JSON 파일을 업로드해주세요.
+            <div className="mt-6 rounded bg-black/30 p-2 text-center text-sm text-white">
+              No devices found. Please upload a JSON file.
             </div>
           )}
         </div>
@@ -101,8 +110,8 @@ export default function MainPage() {
           selectedCable={s.selectedCable}
           traceResult={s.traceResult}
           traceError={s.traceError}
-          setSelectedDevice={(device) => model.updateState("selectedDevice", device)}
-          setSelectedCable={(cable) => model.updateState("selectedCable", cable)}
+          setSelectedDevice={(device) => model.updateState('selectedDevice', device)}
+          setSelectedCable={(cable) => model.updateState('selectedCable', cable)}
           filteredCables={model.filteredCables}
           refetchDevices={model.refetchDevices}
           refetchCables={model.refetchCables}

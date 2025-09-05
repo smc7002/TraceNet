@@ -1,329 +1,334 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * useKeyboardNavigation.ts - React Flow 키보드 네비게이션 커스텀 훅
- * 
- * 목적:
- * - 복잡한 네트워크 다이어그램에서 키보드를 통한 직관적인 네비게이션 제공
- * - 마우스 없이도 효율적인 뷰포트 조작 (이동, 줌, 리셋)
- * - 접근성 향상 및 유저를 위한 단축키 기능
- * 
- * 지원 키보드 조작:
- * - 방향키: 뷰포트 이동 (상하좌우)
- * - Ctrl/Cmd + Plus/Minus: 줌 인/아웃
- * - Ctrl/Cmd + 0: 뷰포트 리셋
- * 
- * 주의사항:
- * - 입력창(input, textarea) 포커스 시 자동 비활성화
- * - React Flow 인스턴스에 전역 접근 (window 객체 사용)
- * - 줌 레벨 제한 (0.3 ~ 2.0) 적용
+ * useKeyboardNavigation.ts — Keyboard navigation hook for React Flow
+ *
+ * Purpose:
+ * - Provide intuitive keyboard navigation in complex network diagrams
+ * - Efficient viewport control without a mouse (pan, zoom, reset)
+ * - Improve accessibility and offer handy shortcuts
+ *
+ * Supported keyboard controls:
+ * - Arrow keys: pan the viewport (up/down/left/right)
+ * - Ctrl/Cmd + Plus/Minus: zoom in/out
+ * - Ctrl/Cmd + 0: reset viewport
+ *
+ * Notes:
+ * - Automatically disabled while an input (input, textarea, contenteditable) has focus
+ * - Accesses the React Flow instance globally via the window object
+ * - Enforces zoom limits (0.3 ~ 2.0)
  */
 
-import { useEffect, useCallback, useMemo } from 'react';
-import type { KeyboardNavigationConfig, KeyboardControls } from '../types/keyboard';
+import { useCallback, useEffect, useMemo } from 'react';
+
+import type { KeyboardControls, KeyboardNavigationConfig } from '../types/keyboard';
 
 /**
- * React Flow 키보드 네비게이션 훅
- * 
- * @param config 키보드 네비게이션 설정 옵션
- * @param config.stepSize 이동 스텝 크기 (픽셀, 기본값: 100)
- * @param config.enabled 키보드 네비게이션 활성화 여부 (기본값: true)
- * @param config.zoomStep 줌 배율 (기본값: 1.2)
- * @param config.animationDuration 뷰포트 변경 애니메이션 지속시간 (밀리초, 기본값: 300)
- * @returns 프로그래밍 방식 뷰포트 제어 함수들
- * 
+ * React Flow keyboard navigation hook
+ *
+ * @param config Keyboard navigation options
+ * @param config.stepSize Pan step size in pixels (default: 100)
+ * @param config.enabled Whether the keyboard nav is enabled (default: true)
+ * @param config.zoomStep Zoom factor per step (default: 1.2)
+ * @param config.animationDuration Duration for viewport animations in ms (default: 300)
+ * @returns Programmatic viewport control functions
+ *
  * @example
  * ```tsx
- * // 기본 사용법
+ * // Basic usage
  * const controls = useKeyboardNavigation();
- * 
- * // 커스텀 설정
+ *
+ * // Custom settings
  * const controls = useKeyboardNavigation({
- *   stepSize: 50,        // 더 세밀한 이동
- *   zoomStep: 1.1,       // 더 부드러운 줌
- *   animationDuration: 200, // 더 빠른 애니메이션
- *   enabled: !isModalOpen   // 모달 열린 상태에서 비활성화
+ *   stepSize: 50,           // finer panning
+ *   zoomStep: 1.1,          // smoother zoom
+ *   animationDuration: 200, // quicker animations
+ *   enabled: !isModalOpen   // disable while a modal is open
  * });
- * 
- * // 프로그래밍 방식 제어
- * <button onClick={controls.zoomIn}>줌 인</button>
- * <button onClick={controls.resetView}>뷰 리셋</button>
+ *
+ * // Programmatic control
+ * <button onClick={controls.zoomIn}>Zoom In</button>
+ * <button onClick={controls.resetView}>Reset View</button>
  * ```
  */
 export const useKeyboardNavigation = ({
   stepSize = 100,
   enabled = true,
   zoomStep = 1.2,
-  animationDuration = 300
+  animationDuration = 300,
 }: KeyboardNavigationConfig = {}): KeyboardControls => {
-
   /**
-   * 키보드 이벤트 핸들러
-   * 
-   * 주요 기능:
-   * 1. 입력창 포커스 시 자동 비활성화 (사용자 타이핑 간섭 방지)
-   * 2. React Flow 인스턴스 전역 접근 및 유효성 검증
-   * 3. 키 조합별 뷰포트 조작 수행
-   * 4. 브라우저 기본 동작 방지 (스크롤, 줌 등)
+   * Keyboard event handler
+   *
+   * Responsibilities:
+   * 1. Disable when an input has focus (avoid interfering with typing)
+   * 2. Access and validate the global React Flow instance
+   * 3. Perform viewport actions per key combo
+   * 4. Prevent default browser behaviors (scroll/zoom, etc.)
    */
-  const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (!enabled) return;
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (!enabled) return;
 
-    /**
-     * 입력창 포커스 감지 및 키보드 네비게이션 비활성화
-     * 
-     * 사용자가 텍스트를 입력 중일 때 방향키나 단축키가 
-     * 네비게이션으로 작동하지 않도록 보호
-     */
-    const activeElement = document.activeElement;
-    if (activeElement && (
-      activeElement.tagName === 'INPUT' || 
-      activeElement.tagName === 'TEXTAREA' ||
-      activeElement.getAttribute('contenteditable') === 'true'
-    )) {
-      return;
-    }
-
-    /**
-     * React Flow 인스턴스 전역 접근
-     * 
-     * 주의: window 객체 사용은 일반적으로 권장되지 않지만,
-     * React Flow의 명령형 API 접근을 위해 불가피하게 사용
-     * 실제 프로젝트에서는 Context나 ref를 통한 전달 방식 고려 필요
-     */
-    const reactFlowInstance = (window as any).reactFlowInstance;
-    if (!reactFlowInstance || !reactFlowInstance.getViewport) return;
-
-    // 현재 뷰포트 상태 가져오기
-    const viewport = reactFlowInstance.getViewport();
-    let newViewport = { ...viewport };
-    let shouldUpdate = false;
-
-    /**
-     * 키보드 입력별 뷰포트 조작 로직
-     * 
-     * 좌표계 주의사항:
-     * - React Flow는 SVG 좌표계를 사용 (Y축이 아래쪽으로 증가)
-     * - 사용자 직관과 맞추기 위해 Y축 이동 방향을 반전
-     */
-    switch (event.code) {
-      case 'ArrowUp':
-        event.preventDefault();
-        newViewport.y += stepSize;  // 뷰포트 위로 이동 (컨텐츠는 아래로)
-        shouldUpdate = true;
-        break;
-        
-      case 'ArrowDown':
-        event.preventDefault();
-        newViewport.y -= stepSize;  // 뷰포트 아래로 이동 (컨텐츠는 위로)
-        shouldUpdate = true;
-        break;
-        
-      case 'ArrowLeft':
-        event.preventDefault();
-        newViewport.x += stepSize;  // 뷰포트 왼쪽으로 이동 (컨텐츠는 오른쪽으로)
-        shouldUpdate = true;
-        break;
-        
-      case 'ArrowRight':
-        event.preventDefault();
-        newViewport.x -= stepSize;  // 뷰포트 오른쪽으로 이동 (컨텐츠는 왼쪽으로)
-        shouldUpdate = true;
-        break;
-        
       /**
-       * 줌 인 (확대)
-       * Ctrl/Cmd + Plus 또는 Ctrl/Cmd + Numpad Plus
-       * 최대 줌 레벨 2.0 제한
+       * Detect focused editable elements and disable keyboard navigation
+       *
+       * Prevent arrow keys/shortcuts from navigating while the user is typing.
        */
-      case 'Equal':       // + 키 (Shift 없이)
-      case 'NumpadAdd':   // 숫자패드 + 키
-        if (event.ctrlKey || event.metaKey) {
-          event.preventDefault();
-          newViewport.zoom = Math.min(viewport.zoom * zoomStep, 2.0);
-          shouldUpdate = true;
-        }
-        break;
-        
-      /**
-       * 줌 아웃 (축소)
-       * Ctrl/Cmd + Minus 또는 Ctrl/Cmd + Numpad Minus
-       * 최소 줌 레벨 0.3 제한
-       */
-      case 'Minus':
-      case 'NumpadSubtract':
-        if (event.ctrlKey || event.metaKey) {
-          event.preventDefault();
-          newViewport.zoom = Math.max(viewport.zoom / zoomStep, 0.3);
-          shouldUpdate = true;
-        }
-        break;
-        
-      /**
-       * 뷰포트 리셋
-       * Ctrl/Cmd + 0: 원점(0,0)으로 이동하고 적정 줌 레벨(0.8) 설정
-       */
-      case 'Digit0':
-        if (event.ctrlKey || event.metaKey) {
-          event.preventDefault();
-          newViewport = { x: 0, y: 0, zoom: 0.8 };
-          shouldUpdate = true;
-        }
-        break;
-    }
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' ||
+          activeElement.tagName === 'TEXTAREA' ||
+          activeElement.getAttribute('contenteditable') === 'true')
+      ) {
+        return;
+      }
 
-    /**
-     * 뷰포트 업데이트 실행
-     * duration 옵션을 통해 부드러운 애니메이션 적용
-     */
-    if (shouldUpdate && reactFlowInstance.setViewport) {
-      reactFlowInstance.setViewport(newViewport, { duration: animationDuration });
-    }
-  }, [enabled, stepSize, zoomStep, animationDuration]);
+      /**
+       * Access the React Flow instance globally
+       *
+       * Note: Using the window object isn't generally recommended, but is used here
+       * for imperative API access. In real projects consider passing via Context or refs.
+       */
+      const reactFlowInstance = (window as any).reactFlowInstance;
+      if (!reactFlowInstance || !reactFlowInstance.getViewport) return;
+
+      // Get the current viewport
+      const viewport = reactFlowInstance.getViewport();
+      let newViewport = { ...viewport };
+      let shouldUpdate = false;
+
+      /**
+       * Viewport manipulation per key input
+       *
+       * Coordinate note:
+       * - React Flow uses an SVG coordinate system (Y increases downward)
+       * - We invert Y movements to match user intuition
+       */
+      switch (event.code) {
+        case 'ArrowUp':
+          event.preventDefault();
+          newViewport.y += stepSize; // move viewport up (content moves down)
+          shouldUpdate = true;
+          break;
+
+        case 'ArrowDown':
+          event.preventDefault();
+          newViewport.y -= stepSize; // move viewport down (content moves up)
+          shouldUpdate = true;
+          break;
+
+        case 'ArrowLeft':
+          event.preventDefault();
+          newViewport.x += stepSize; // move viewport left (content moves right)
+          shouldUpdate = true;
+          break;
+
+        case 'ArrowRight':
+          event.preventDefault();
+          newViewport.x -= stepSize; // move viewport right (content moves left)
+          shouldUpdate = true;
+          break;
+
+        /**
+         * Zoom in
+         * Ctrl/Cmd + Plus or Ctrl/Cmd + Numpad Plus
+         * Max zoom 2.0
+         */
+        case 'Equal': // '=' key (often used as Ctrl+'=' for zoom-in)
+        case 'NumpadAdd': // numpad '+'
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            newViewport.zoom = Math.min(viewport.zoom * zoomStep, 2.0);
+            shouldUpdate = true;
+          }
+          break;
+
+        /**
+         * Zoom out
+         * Ctrl/Cmd + Minus or Ctrl/Cmd + Numpad Minus
+         * Min zoom 0.3
+         */
+        case 'Minus':
+        case 'NumpadSubtract':
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            newViewport.zoom = Math.max(viewport.zoom / zoomStep, 0.3);
+            shouldUpdate = true;
+          }
+          break;
+
+        /**
+         * Reset viewport
+         * Ctrl/Cmd + 0: move to origin (0,0) and set a comfortable zoom (0.8)
+         */
+        case 'Digit0':
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            newViewport = { x: 0, y: 0, zoom: 0.8 };
+            shouldUpdate = true;
+          }
+          break;
+      }
+
+      /**
+       * Apply viewport update
+       * Uses duration for a smooth animation.
+       */
+      if (shouldUpdate && reactFlowInstance.setViewport) {
+        reactFlowInstance.setViewport(newViewport, { duration: animationDuration });
+      }
+    },
+    [enabled, stepSize, zoomStep, animationDuration],
+  );
 
   /**
-   * 키보드 이벤트 리스너 등록/해제
-   * 
-   * document 레벨에서 이벤트를 캐치하여 
-   * React Flow 컴포넌트에 포커스가 없어도 동작하도록 구현
+   * Register/unregister the keyboard event listener
+   *
+   * Listen at the document level so it works even when the React Flow
+   * component itself doesn't have focus.
    */
   useEffect(() => {
     if (!enabled) return;
 
     document.addEventListener('keydown', handleKeyDown);
 
-    // 클린업: 메모리 누수 방지
+    // Cleanup to prevent memory leaks
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleKeyDown, enabled]);
 
   /**
-   * 프로그래밍 방식 뷰포트 제어 함수들
-   * 
-   * 버튼 클릭이나 다른 이벤트를 통해 뷰포트를 조작할 때 사용
-   * 모든 함수는 키보드 조작과 동일한 로직과 애니메이션을 적용
+   * Programmatic viewport controls
+   *
+   * Use these from buttons or other events.
+   * All functions apply the same logic/animation as the keyboard controls.
    */
-  const controls = useMemo((): KeyboardControls => ({
-    /**
-     * 뷰포트를 위로 이동
-     * 키보드의 ArrowUp과 동일한 동작
-     */
-    moveUp: () => {
-      const reactFlowInstance = (window as any).reactFlowInstance;
-      if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
-        const viewport = reactFlowInstance.getViewport();
-        reactFlowInstance.setViewport(
-          { ...viewport, y: viewport.y + stepSize }, 
-          { duration: animationDuration }
-        );
-      }
-    },
+  const controls = useMemo(
+    (): KeyboardControls => ({
+      /**
+       * Pan up
+       * Equivalent to ArrowUp
+       */
+      moveUp: () => {
+        const reactFlowInstance = (window as any).reactFlowInstance;
+        if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
+          const viewport = reactFlowInstance.getViewport();
+          reactFlowInstance.setViewport(
+            { ...viewport, y: viewport.y + stepSize },
+            { duration: animationDuration },
+          );
+        }
+      },
 
-    /**
-     * 뷰포트를 아래로 이동
-     * 키보드의 ArrowDown과 동일한 동작
-     */
-    moveDown: () => {
-      const reactFlowInstance = (window as any).reactFlowInstance;
-      if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
-        const viewport = reactFlowInstance.getViewport();
-        reactFlowInstance.setViewport(
-          { ...viewport, y: viewport.y - stepSize }, 
-          { duration: animationDuration }
-        );
-      }
-    },
+      /**
+       * Pan down
+       * Equivalent to ArrowDown
+       */
+      moveDown: () => {
+        const reactFlowInstance = (window as any).reactFlowInstance;
+        if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
+          const viewport = reactFlowInstance.getViewport();
+          reactFlowInstance.setViewport(
+            { ...viewport, y: viewport.y - stepSize },
+            { duration: animationDuration },
+          );
+        }
+      },
 
-    /**
-     * 뷰포트를 왼쪽으로 이동
-     * 키보드의 ArrowLeft와 동일한 동작
-     */
-    moveLeft: () => {
-      const reactFlowInstance = (window as any).reactFlowInstance;
-      if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
-        const viewport = reactFlowInstance.getViewport();
-        reactFlowInstance.setViewport(
-          { ...viewport, x: viewport.x + stepSize }, 
-          { duration: animationDuration }
-        );
-      }
-    },
+      /**
+       * Pan left
+       * Equivalent to ArrowLeft
+       */
+      moveLeft: () => {
+        const reactFlowInstance = (window as any).reactFlowInstance;
+        if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
+          const viewport = reactFlowInstance.getViewport();
+          reactFlowInstance.setViewport(
+            { ...viewport, x: viewport.x + stepSize },
+            { duration: animationDuration },
+          );
+        }
+      },
 
-    /**
-     * 뷰포트를 오른쪽으로 이동
-     * 키보드의 ArrowRight와 동일한 동작
-     */
-    moveRight: () => {
-      const reactFlowInstance = (window as any).reactFlowInstance;
-      if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
-        const viewport = reactFlowInstance.getViewport();
-        reactFlowInstance.setViewport(
-          { ...viewport, x: viewport.x - stepSize }, 
-          { duration: animationDuration }
-        );
-      }
-    },
+      /**
+       * Pan right
+       * Equivalent to ArrowRight
+       */
+      moveRight: () => {
+        const reactFlowInstance = (window as any).reactFlowInstance;
+        if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
+          const viewport = reactFlowInstance.getViewport();
+          reactFlowInstance.setViewport(
+            { ...viewport, x: viewport.x - stepSize },
+            { duration: animationDuration },
+          );
+        }
+      },
 
-    /**
-     * 줌 인 (확대)
-     * 최대 줌 레벨 2.0 제한 적용
-     */
-    zoomIn: () => {
-      const reactFlowInstance = (window as any).reactFlowInstance;
-      if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
-        const viewport = reactFlowInstance.getViewport();
-        reactFlowInstance.setViewport(
-          { ...viewport, zoom: Math.min(viewport.zoom * zoomStep, 2.0) }, 
-          { duration: animationDuration }
-        );
-      }
-    },
+      /**
+       * Zoom in
+       * Enforces max zoom 2.0
+       */
+      zoomIn: () => {
+        const reactFlowInstance = (window as any).reactFlowInstance;
+        if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
+          const viewport = reactFlowInstance.getViewport();
+          reactFlowInstance.setViewport(
+            { ...viewport, zoom: Math.min(viewport.zoom * zoomStep, 2.0) },
+            { duration: animationDuration },
+          );
+        }
+      },
 
-    /**
-     * 줌 아웃 (축소)
-     * 최소 줌 레벨 0.3 제한 적용
-     */
-    zoomOut: () => {
-      const reactFlowInstance = (window as any).reactFlowInstance;
-      if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
-        const viewport = reactFlowInstance.getViewport();
-        reactFlowInstance.setViewport(
-          { ...viewport, zoom: Math.max(viewport.zoom / zoomStep, 0.3) }, 
-          { duration: animationDuration }
-        );
-      }
-    },
+      /**
+       * Zoom out
+       * Enforces min zoom 0.3
+       */
+      zoomOut: () => {
+        const reactFlowInstance = (window as any).reactFlowInstance;
+        if (reactFlowInstance?.getViewport && reactFlowInstance?.setViewport) {
+          const viewport = reactFlowInstance.getViewport();
+          reactFlowInstance.setViewport(
+            { ...viewport, zoom: Math.max(viewport.zoom / zoomStep, 0.3) },
+            { duration: animationDuration },
+          );
+        }
+      },
 
-    /**
-     * 뷰포트 리셋
-     * 원점으로 이동하고 기본 줌 레벨(0.8) 적용
-     * 리셋 동작은 더 긴 애니메이션 시간 사용
-     */
-    resetView: () => {
-      const reactFlowInstance = (window as any).reactFlowInstance;
-      if (reactFlowInstance?.setViewport) {
-        reactFlowInstance.setViewport(
-          { x: 0, y: 0, zoom: 0.8 }, 
-          { duration: animationDuration * 2 }
-        );
-      }
-    },
+      /**
+       * Reset viewport
+       * Move to origin and apply default zoom (0.8).
+       * Uses a longer animation for reset.
+       */
+      resetView: () => {
+        const reactFlowInstance = (window as any).reactFlowInstance;
+        if (reactFlowInstance?.setViewport) {
+          reactFlowInstance.setViewport(
+            { x: 0, y: 0, zoom: 0.8 },
+            { duration: animationDuration * 2 },
+          );
+        }
+      },
 
-    /**
-     * 현재 뷰포트 상태 조회
-     * 디버깅이나 상태 저장/복원 시 유용
-     * 
-     * @returns 현재 뷰포트 상태 { x, y, zoom }
-     */
-    getCurrentViewport: () => {
-      const reactFlowInstance = (window as any).reactFlowInstance;
-      if (reactFlowInstance?.getViewport) {
-        return reactFlowInstance.getViewport();
-      }
-      // React Flow 인스턴스가 없을 때 기본값 반환
-      return { x: 0, y: 0, zoom: 1 };
-    }
-  }), [stepSize, zoomStep, animationDuration]);
+      /**
+       * Get current viewport
+       * Useful for debugging or persisting/restoring state.
+       *
+       * @returns Current viewport { x, y, zoom }
+       */
+      getCurrentViewport: () => {
+        const reactFlowInstance = (window as any).reactFlowInstance;
+        if (reactFlowInstance?.getViewport) {
+          return reactFlowInstance.getViewport();
+        }
+        // Fallback when the instance is missing
+        return { x: 0, y: 0, zoom: 1 };
+      },
+    }),
+    [stepSize, zoomStep, animationDuration],
+  );
 
   return controls;
 };

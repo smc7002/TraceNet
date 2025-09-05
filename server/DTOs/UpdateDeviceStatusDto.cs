@@ -2,10 +2,15 @@ namespace TraceNet.DTOs
 {
     public class UpdateDeviceStatusDto
     {
-        /// <summary>Online / Offline / Unstable / Unknown / Unreachable</summary>
+        /// <summary>
+        /// Current status of the device. 
+        /// Possible values: Online, Offline, Unstable, Unknown, Unreachable.
+        /// </summary>
         public string Status { get; set; } = "Unknown";
 
-        /// <summary>선택: 수동 상태 운용 시 Ping을 끌지 여부</summary>
+        /// <summary>
+        /// Optional: Whether to disable automatic Ping when managing device status manually.
+        /// </summary>
         public bool? EnablePing { get; set; }
     }
 

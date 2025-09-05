@@ -1,8 +1,8 @@
 namespace TraceNet.DTOs
 {
     /// <summary>
-    /// 케이블 생성 요청 DTO
-    /// 케이블 ID, 설명, 연결할 두 포트 ID를 전달
+    /// DTO for cable creation requests.
+    /// Provides cable ID, description, and IDs of the two ports to connect.
     /// </summary>
     public class CreateCableDto
     {

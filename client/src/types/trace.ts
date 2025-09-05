@@ -1,50 +1,50 @@
 /**
- * trace.ts 
- * 
- * 용도: TraceNet의 핵심 기능인 장비간 케이블 경로 추적
- * 데이터 소스: GET /api/trace/{deviceId} 응답
+ * trace.ts
+ *
+ * Purpose: core project feature — trace cable paths between devices
+ * Data source: GET /api/trace/{deviceId}
  */
 
 /**
- * 추적 경로의 개별 hop 정보
- * 
- * 용도: SidePanel에서 "PC-01 → Switch-01 → Server-01" 형태로 경로 표시
+ * Single hop in the traced path
+ *
+ * Used to render a readable path like "PC-01 → Switch-01 → Server-01" in the SidePanel.
  */
 export interface TraceDto {
-  cableId: number;        // 해당 홉에서 사용된 케이블 ID
-  fromDeviceId: number;   // 출발 장비 ID
-  fromDevice: string;     // 출발 장비명 (표시용)
-  fromPort: string;       // 출발 포트명 (예: "GigabitEthernet0/1")
-  toDeviceId: number;     // 도착 장비 ID  
-  toDevice: string;       // 도착 장비명 (표시용)
-  toPort: string;         // 도착 포트명
+  cableId: number;        // cable used for this hop
+  fromDeviceId: number;   // source device ID
+  fromDevice: string;     // source device name (display)
+  fromPort: string;       // source port name (e.g., "GigabitEthernet0/1")
+  toDeviceId: number;     // destination device ID
+  toDevice: string;       // destination device name (display)
+  toPort: string;         // destination port name
 }
 
 /**
- * 케이블 엣지 정보 (다이어그램 렌더링용)
- * 
- * 용도: NetworkDiagram에서 추적된 경로를 하이라이트된 연결선으로 표시
- * TraceDto와 차이점: 포트 ID 포함으로 정확한 연결점 식별
+ * Cable edge for diagram rendering
+ *
+ * Used by NetworkDiagram to highlight the traced path as edges.
+ * Diff vs TraceDto: includes port IDs for precise connection endpoints.
  */
 export interface CableEdge {
-  cableId: number;        // 케이블 고유 ID
-  fromPortId: number;     // 출발 포트 ID (정확한 연결점 식별)
-  fromDeviceId: number;   // 출발 장비 ID
-  toPortId: number;       // 도착 포트 ID
-  toDeviceId: number;     // 도착 장비 ID
+  cableId: number;        // unique cable ID
+  fromPortId: number;     // source port ID (precise endpoint)
+  fromDeviceId: number;   // source device ID
+  toPortId: number;       // destination port ID
+  toDeviceId: number;     // destination device ID
 }
 
 /**
- * 전체 추적 결과 응답
- * 
- * 데이터 이중화 이유:
- * - path: 사용자에게 보여줄 텍스트 경로
- * - cables: 다이어그램에서 시각화할 연결선 데이터
+ * Full trace response
+ *
+ * Duplication rationale:
+ * - path: human-readable hops for textual UI
+ * - cables: structured edges for diagram highlighting
  */
 export interface TraceResponse {
-  startDeviceName: string;  // 추적 시작 장비명
-  endDeviceName?: string;   // 추적 종료 장비명 (도달 가능한 경우)
-  success: boolean;         // 추적 성공 여부
-  path: TraceDto[];         // 홉별 상세 경로 (텍스트 표시용)
-  cables: CableEdge[];      // 케이블 연결 정보 (다이어그램 하이라이트용)
+  startDeviceName: string;  // starting device name
+  endDeviceName?: string;   // ending device name (if path reaches a target)
+  success: boolean;         // whether trace succeeded
+  path: TraceDto[];         // hop-by-hop details for text display
+  cables: CableEdge[];      // cable connections for diagram overlay
 }

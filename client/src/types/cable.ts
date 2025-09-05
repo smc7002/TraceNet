@@ -1,13 +1,11 @@
 /**
- * Cable 관련 타입 정의
- * 
- * Cable: 데이터베이스 엔티티 (기본 케이블 정보)
- * CableDto: API 응답/UI 표시용 (연결 정보 포함)
+ * Cable-related type definitions
+ *
+ * Cable:    database entity (basic cable info)
+ * CableDto: API/UI model that includes endpoint details
  */
 
-/**
- * 기본 케이블 엔티티 (데이터베이스 모델)
- */
+/** Base cable entity (database model) */
 export interface Cable {
   cableId: number;
   type?: string;
@@ -15,16 +13,16 @@ export interface Cable {
 }
 
 /**
- * 케이블 연결 정보 DTO (API 응답/UI 표시용)
- * 양쪽 장비의 상세 연결 정보를 포함
+ * Cable connection DTO (API response / UI display)
+ * Includes detailed connection info for both endpoints.
  */
 export interface CableDto {
-  cableId: string;        // API에서 문자열로 반환
+  cableId: string;      // returned as a string by the API
   description?: string;
-  fromDevice: string;     // 출발 장비명
-  fromDeviceId: string;   // 출발 장비 ID
-  fromPort: string;       // 출발 포트명
-  toDevice: string;       // 도착 장비명  
-  toDeviceId: string;     // 도착 장비 ID
-  toPort: string;         // 도착 포트명
+  fromDevice: string;   // source device name
+  fromDeviceId: string; // source device ID
+  fromPort: string;     // source port name
+  toDevice: string;     // destination device name
+  toDeviceId: string;   // destination device ID
+  toPort: string;       // destination port name
 }

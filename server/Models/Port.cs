@@ -16,8 +16,6 @@ namespace TraceNet.Models
 
     public int DeviceId { get; set; }
     public virtual Device Device { get; set; } = null!;
-
-    // ✅ 정방향 연결 (FromPort)
     public int? ConnectionCableConnectionId { get; set; }
     public virtual CableConnection? Connection { get; set; }
 }

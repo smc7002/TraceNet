@@ -14,7 +14,6 @@ namespace TraceNet.DTOs
             CreateMap<Device, DeviceDto>()
                 .ForMember(d => d.RackName, o => o.MapFrom(s => s.Rack != null ? s.Rack.Name : null))
                 .ForMember(d => d.IpAddress, o => o.MapFrom(s => s.IPAddress))
-                // 아래 4개는 동일명이라 생략 가능하지만, 명시해 두면 안전
                 .ForMember(d => d.Status, o => o.MapFrom(s => s.Status))
                 .ForMember(d => d.LatencyMs, o => o.MapFrom(s => s.LatencyMs))
                 .ForMember(d => d.LastCheckedAt, o => o.MapFrom(s => s.LastCheckedAt))

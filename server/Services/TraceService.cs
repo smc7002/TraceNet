@@ -7,8 +7,8 @@ using TraceNet.Services;
 namespace TraceNet.Services
 {
     /// <summary>
-    /// 장비 간 네트워크 연결 경로를 추적하는 서비스 클래스
-    /// 성능 최적화를 위해 데이터 사전 로딩과 동기 DFS를 활용
+    /// Service class that traces network connection paths between devices.
+    /// Uses data preloading and a synchronous DFS for performance.
     /// </summary>
     public class TraceService
     {
@@ -24,30 +24,30 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 시작 장비(DeviceId)에서 Server까지 도달하는 경로를 추적합니다.
-        /// 실패 시 예외를 발생시키며, 반환 결과는 TraceResultDto 형식입니다.
+        /// Trace a path from the starting device (DeviceId) to the server.
+        /// Throws on failure. Returns a <see cref="TraceResultDto"/>.
         /// </summary>
         public async Task<TraceResultDto> TracePathAsync(int startDeviceId, int maxDepth = 20)
         {
-            _logger.LogInformation("트레이스 시작: StartDeviceId={StartDeviceId}", startDeviceId);
+            _logger.LogInformation("Trace started: StartDeviceId={StartDeviceId}", startDeviceId);
 
             try
             {
                 var deviceCache = await PreloadNetworkDataAsync(startDeviceId, maxDepth);
 
-                _logger.LogInformation("Preload 완료. 캐시된 장비 수: {Count}", deviceCache.Count);
+                _logger.LogInformation("Preload completed. Cached devices: {Count}", deviceCache.Count);
 
                 if (!deviceCache.TryGetValue(startDeviceId, out var startDevice))
                 {
-                    _logger.LogError("❌ 시작 장비를 캐시에서 찾을 수 없음: {StartDeviceId}", startDeviceId);
-                    throw new KeyNotFoundException($"시작 장비(DeviceId={startDeviceId})를 찾을 수 없습니다.");
+                    _logger.LogError("❌ Starting device not found in cache: {StartDeviceId}", startDeviceId);
+                    throw new KeyNotFoundException($"Starting device (DeviceId={startDeviceId}) not found.");
                 }
 
-                _logger.LogInformation("장비 로드 성공: {DeviceName}", startDevice.Name);
+                _logger.LogInformation("Device loaded: {DeviceName}", startDevice.Name);
 
                 if (startDevice.Type.Equals("server", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogInformation("시작 장비가 이미 서버입니다. 즉시 반환.");
+                    _logger.LogInformation("Starting device is already the server. Returning immediately.");
                     return new TraceResultDto
                     {
                         StartDeviceName = startDevice.Name,
@@ -58,15 +58,15 @@ namespace TraceNet.Services
                     };
                 }
 
-                _logger.LogInformation("DFS 탐색 진입 직전...");
+                _logger.LogInformation("About to enter DFS search...");
                 var result = PerformDFSSearch(startDeviceId, deviceCache, maxDepth);
 
-                _logger.LogInformation("DFS 탐색 완료. 성공 여부: {Success}", result.Success);
+                _logger.LogInformation("DFS search completed. Success={Success}", result.Success);
 
                 if (!result.Success)
                 {
-                    _logger.LogWarning("❌ DFS 탐색 실패. 경로 없음.");
-                    throw new InvalidOperationException("서버까지의 경로를 찾을 수 없습니다.");
+                    _logger.LogWarning("❌ DFS search failed. No path found.");
+                    throw new InvalidOperationException("Could not find a path to the server.");
                 }
 
                 result.StartDeviceName = startDevice.Name;
@@ -74,14 +74,14 @@ namespace TraceNet.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "트레이스 실패: StartDeviceId={StartDeviceId}", startDeviceId);
+                _logger.LogError(ex, "Trace failed: StartDeviceId={StartDeviceId}", startDeviceId);
                 throw;
             }
         }
 
         /// <summary>
-        /// 연결된 장비들의 네트워크 데이터를 사전에 로딩합니다.
-        /// BFS 방식으로 maxDepth 깊이까지의 연결된 장비들을 한 번에 로딩
+        /// Preload network data for connected devices.
+        /// Loads all connected devices up to <paramref name="maxDepth"/> using BFS.
         /// </summary>
         private async Task<Dictionary<int, Device>> PreloadNetworkDataAsync(int startDeviceId, int maxDepth)
         {
@@ -99,6 +99,7 @@ namespace TraceNet.Services
                 .AsSplitQuery()
                 .ToDictionaryAsync(d => d.DeviceId);
 
+            // Ensure ToPort.Device is populated from the cache when available
             foreach (var device in devices.Values)
             {
                 foreach (var port in device.Ports)
@@ -115,7 +116,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// BFS를 사용하여 연결된 장비 ID들을 수집합니다. (EF Core LINQ 대신 메모리 기반)
+        /// Collect connected device IDs using BFS (memory-based instead of EF LINQ).
         /// </summary>
         private async Task<HashSet<int>> GetConnectedDeviceIdsBFS_MemoryBased(int startDeviceId, int maxDepth)
         {
@@ -152,7 +153,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 동기 DFS를 사용하여 서버까지의 경로를 탐색합니다.
+        /// Use a synchronous DFS to find a path to the server.
         /// </summary>
         private TraceResultDto PerformDFSSearch(int startDeviceId, Dictionary<int, Device> deviceCache, int maxDepth)
         {
@@ -182,8 +183,8 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 동기 DFS 알고리즘으로 서버까지의 경로를 탐색합니다.
-        /// Stack을 사용하여 백트래킹을 효율적으로 처리합니다.
+        /// DFS algorithm to search for a path to the server.
+        /// Uses stacks to efficiently handle backtracking.
         /// </summary>
         private bool DFS(
             int currentDeviceId,
@@ -199,17 +200,17 @@ namespace TraceNet.Services
 
             if (!deviceCache.TryGetValue(currentDeviceId, out var device))
             {
-                _logger.LogWarning("캐시에서 장비를 찾을 수 없음: DeviceId={DeviceId}", currentDeviceId);
+                _logger.LogWarning("Device not found in cache: DeviceId={DeviceId}", currentDeviceId);
                 return false;
             }
 
-            _logger.LogInformation("DFS 탐색 중: {DeviceId} ({DeviceName}), 깊이={Depth}", device.DeviceId, device.Name, depth);
+            _logger.LogInformation("DFS visiting: {DeviceId} ({DeviceName}), depth={Depth}", device.DeviceId, device.Name, depth);
 
             visited.Add(currentDeviceId);
 
             if (device.Type.Equals("server", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogInformation("서버 발견: {DeviceName}", device.Name);
+                _logger.LogInformation("Server found: {DeviceName}", device.Name);
                 return true;
             }
 
@@ -257,7 +258,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 포트 연결의 유효성을 검사합니다.
+        /// Get valid outgoing connections from a port.
         /// </summary>
         private static List<(Device nextDevice, Cable cable, Port nextPort)> GetValidConnections(Port port)
         {
@@ -273,15 +274,15 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// TracePath 상의 모든 장비 Ping 실행
+        /// Execute Ping for all devices along the traced path.
         /// </summary>
         public async Task<TracePingResultDto> PingTracePathAsync(int startDeviceId)
         {
-            _logger.LogInformation("TracePath Ping 시작: StartDeviceId={StartDeviceId}", startDeviceId);
+            _logger.LogInformation("TracePath ping started: StartDeviceId={StartDeviceId}", startDeviceId);
 
             try
             {
-                // 1. 먼저 경로 추적
+                // 1) Trace the path first
                 var traceResult = await TracePathAsync(startDeviceId);
 
                 if (!traceResult.Success)
@@ -289,11 +290,11 @@ namespace TraceNet.Services
                     return new TracePingResultDto
                     {
                         Success = false,
-                        ErrorMessage = "경로를 찾을 수 없습니다."
+                        ErrorMessage = "No path found."
                     };
                 }
 
-                // 2. 경로상 모든 장비 ID 수집
+                // 2) Collect all device IDs along the path
                 var deviceIds = new HashSet<int> { startDeviceId };
                 foreach (var step in traceResult.Path)
                 {
@@ -301,7 +302,7 @@ namespace TraceNet.Services
                     deviceIds.Add(step.ToDeviceId);
                 }
 
-                // 3. 각 장비에 대해 Ping 실행
+                // 3) Ping each device
                 var pingResults = new List<PingResultDto>();
                 var devices = await _context.Devices
                     .Where(d => deviceIds.Contains(d.DeviceId))
@@ -331,13 +332,13 @@ namespace TraceNet.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "TracePath Ping 실패: StartDeviceId={StartDeviceId}", startDeviceId);
+                _logger.LogError(ex, "TracePath ping failed: StartDeviceId={StartDeviceId}", startDeviceId);
                 throw;
             }
         }
 
         /// <summary>
-        /// 단일 장비 Ping 실행 (내부용)
+        /// Execute ping for a single device (internal use).
         /// </summary>
         private async Task<PingResultDto> PingDeviceInternalAsync(Device device)
         {
@@ -350,14 +351,14 @@ namespace TraceNet.Services
                     IpAddress = "",
                     Status = "Unknown",
                     CheckedAt = DateTime.UtcNow,
-                    ErrorMessage = "IP 주소가 설정되지 않음"
+                    ErrorMessage = "IP address is not configured"
                 };
             }
 
-            // PingService 호출
+            // Call PingService
             var pingResult = await _pingService.PingAsync(device.IPAddress);
 
-            // Device 상태 업데이트
+            // Update device state
             device.Status = pingResult.Status;
             device.LatencyMs = pingResult.LatencyMs;
             device.LastCheckedAt = DateTime.UtcNow;

@@ -1,31 +1,32 @@
 /**
  * @fileoverview 네트워크 케이블 연결 관계를 React Flow 엣지로 변환하는 유틸리티
- * 
+ *
  * 주요 기능:
  * - 케이블 정보를 시각적 연결선(Edge)으로 변환
  * - 트레이스 경로 하이라이트 처리
  * - 기본 케이블과 트레이스 경로 중복 제거
  * - 레거시 API 형식 호환 (PascalCase ↔ camelCase)
- * 
+ *
  * 사용 예시:
  * ```typescript
  * // 기본 케이블을 엣지로 변환
  * const edges = mapCablesToEdges(cables, true);
- * 
+ *
  * // 트레이스 경로 생성
  * const traceEdges = mapTraceCablesToEdges(traceCables, Date.now());
- * 
+ *
  * // 중복 제거
  * const filteredEdges = excludeTraceOverlaps(baseEdges, traceEdges);
  * ```
  */
 
-import type { Edge } from "react-flow-renderer";
-import type { CableDto } from "../types/cable";
-import type { CableEdge } from "../types/trace";
+import type { Edge } from 'react-flow-renderer';
+
+import type { CableDto } from '../types/cable';
+import type { CableEdge } from '../types/trace';
 
 /** 케이블 엣지 ID 프리픽스 - 엣지 타입 구분용 */
-export const CABLE_EDGE_PREFIX = "cable-";
+export const CABLE_EDGE_PREFIX = 'cable-';
 
 // ==========================================
 // 유틸리티 함수
@@ -33,10 +34,10 @@ export const CABLE_EDGE_PREFIX = "cable-";
 
 /**
  * 무방향 연결 키 생성
- * 
+ *
  * A-B 연결과 B-A 연결을 동일한 키로 처리하기 위해
  * 사전순으로 정렬하여 일관된 키 생성
- * 
+ *
  * @param a 첫 번째 노드 ID
  * @param b 두 번째 노드 ID
  * @returns 정규화된 연결 키 (예: "device1-device2")
@@ -51,7 +52,7 @@ function undirectedKey(a: number | string, b: number | string): string {
 const S = (v: number | string): string => String(v);
 
 /** 안전한 숫자 변환 */
-const toNum = (v: number | string): number => (typeof v === "number" ? v : Number(v));
+const toNum = (v: number | string): number => (typeof v === 'number' ? v : Number(v));
 
 // ==========================================
 // 레거시 호환성 처리
@@ -108,16 +109,16 @@ interface NormalizedCableEdge {
 
 /**
  * 케이블 DTO 정규화 함수
- * 
+ *
  * 신규 API(camelCase)와 레거시 API(PascalCase) 형식을 모두 받아서
  * 내부적으로 일관된 camelCase 형식으로 변환
- * 
+ *
  * @param c 입력 케이블 DTO (신규 또는 레거시 형식)
  * @returns 정규화된 케이블 정보
  */
 function normalizeCableDto(c: CableDtoInput): NormalizedCableDto {
   // 신규 API 형식 감지 (camelCase 속성 존재 여부로 판단)
-  if ("fromDeviceId" in c) {
+  if ('fromDeviceId' in c) {
     return {
       cableId: S(c.cableId),
       fromDeviceId: toNum(c.fromDeviceId),
@@ -125,7 +126,7 @@ function normalizeCableDto(c: CableDtoInput): NormalizedCableDto {
       description: c.description,
     };
   }
-  
+
   // 레거시 API 형식 자동 변환 (PascalCase → camelCase)
   return {
     cableId: S(c.CableId),
@@ -137,13 +138,13 @@ function normalizeCableDto(c: CableDtoInput): NormalizedCableDto {
 
 /**
  * 케이블 엣지 정규화 함수
- * 
+ *
  * @param e 입력 케이블 엣지 (신규 또는 레거시 형식)
  * @returns 정규화된 케이블 엣지 정보
  */
 function normalizeCableEdge(e: CableEdgeInput): NormalizedCableEdge {
   // 신규 API 형식 처리
-  if ("fromPortId" in e) {
+  if ('fromPortId' in e) {
     return {
       cableId: S(e.cableId),
       fromDeviceId: toNum(e.fromDeviceId),
@@ -152,7 +153,7 @@ function normalizeCableEdge(e: CableEdgeInput): NormalizedCableEdge {
       toPortId: toNum(e.toPortId),
     };
   }
-  
+
   // 레거시 API 형식 자동 변환
   return {
     cableId: S(e.CableId),
@@ -169,10 +170,10 @@ function normalizeCableEdge(e: CableEdgeInput): NormalizedCableEdge {
 
 /**
  * 케이블 정보를 React Flow 엣지로 변환
- * 
+ *
  * 네트워크 인프라를 나타내는 기본 케이블들을 시각적 연결선으로 변환.
  * 레이아웃 모드에 따라 다른 스타일과 속성 적용.
- * 
+ *
  * @param cables 케이블 정보 배열 (신규/레거시 형식 모두 지원)
  * @param isRadial 방사형 레이아웃 여부 (true: 방사형, false: 계층형)
  * @returns React Flow Edge 배열
@@ -194,28 +195,30 @@ export function mapCablesToEdges(cables: CableDtoInput[], isRadial: boolean): Ed
       id: `${CABLE_EDGE_PREFIX}${c.cableId}`,
       source: sourceId,
       target: targetId,
-      type: isRadial ? "custom" : "default",
-      
+      type: isRadial ? 'custom' : 'default',
+
       // 계층형 레이아웃에서만 기본 스타일 적용
       // 방사형에서는 CustomEdge 컴포넌트에서 스타일 처리
-      style: isRadial ? undefined : { 
-        stroke: "#000", 
-        strokeWidth: 2.2 
-      },
-      
+      style: isRadial
+        ? undefined
+        : {
+            stroke: '#000',
+            strokeWidth: 2.2,
+          },
+
       // 케이블 설명을 라벨로 표시
-      label: c.description ?? "",
+      label: c.description ?? '',
       labelStyle: {
         fontSize: 10,
         fontWeight: 500,
-        transform: "translateY(-8px)",  // 연결선 위로 약간 올려서 표시
-        pointerEvents: "none",          // 라벨 클릭 방지
+        transform: 'translateY(-8px)', // 연결선 위로 약간 올려서 표시
+        pointerEvents: 'none', // 라벨 클릭 방지
       },
-      
+
       // 메타데이터 저장 (중복 제거 및 디버깅용)
       data: {
-        key: undirectedKey(sourceId, targetId),  // 무방향 연결 키
-        mode: isRadial ? "radial" : "hierarchical",
+        key: undirectedKey(sourceId, targetId), // 무방향 연결 키
+        mode: isRadial ? 'radial' : 'hierarchical',
         cableId: c.cableId,
         fromDeviceId: sourceId,
         toDeviceId: targetId,
@@ -225,10 +228,10 @@ export function mapCablesToEdges(cables: CableDtoInput[], isRadial: boolean): Ed
     // 계층형 레이아웃에서는 Handle 명시적 지정
     return isRadial
       ? base
-      : { 
-          ...base, 
-          sourceHandle: "source", 
-          targetHandle: "target" 
+      : {
+          ...base,
+          sourceHandle: 'source',
+          targetHandle: 'target',
         };
   });
 }
@@ -239,13 +242,13 @@ export function mapCablesToEdges(cables: CableDtoInput[], isRadial: boolean): Ed
 
 /**
  * 트레이스 경로를 하이라이트 엣지로 변환
- * 
+ *
  * 네트워크 경로 추적 결과를 시각적으로 강조 표시하기 위한 엣지 생성.
  * 기본 케이블과 구별되는 스타일 적용 (초록색 점선 + 애니메이션).
- * 
+ *
  * 주의: 이 함수는 'trace-' 프리픽스를 추가하지 않음.
  *       MainPage.tsx에서 최종적으로 프리픽스 추가.
- * 
+ *
  * @param cables 트레이스 경로 케이블 정보
  * @param timestamp 유니크 ID 생성용 타임스탬프
  * @param opts 옵션 (레이아웃 모드 등)
@@ -254,9 +257,9 @@ export function mapCablesToEdges(cables: CableDtoInput[], isRadial: boolean): Ed
 export function mapTraceCablesToEdges(
   cables: CableEdgeInput[],
   timestamp: number,
-  opts?: { mode?: "radial" | "hierarchical" }
+  opts?: { mode?: 'radial' | 'hierarchical' },
 ): Edge[] {
-  const mode = opts?.mode ?? "radial";
+  const mode = opts?.mode ?? 'radial';
 
   return (cables ?? []).map((raw, index) => {
     // 입력 데이터 정규화
@@ -269,25 +272,25 @@ export function mapTraceCablesToEdges(
       id: `${c.cableId}-${c.fromPortId}-${c.toPortId}-${timestamp}-${index}`,
       source: fromId,
       target: toId,
-      type: "custom",  // 항상 커스텀 엣지 사용
-      
+      type: 'custom', // 항상 커스텀 엣지 사용
+
       // 트레이스 전용 스타일: 초록색 점선 + 두꺼운 선
-      style: { 
-        stroke: "#10b981",        // 초록색 (emerald-500)
-        strokeDasharray: "5 5",   // 점선 패턴
-        strokeWidth: 2 
+      style: {
+        stroke: '#10b981', // 초록색 (emerald-500)
+        strokeDasharray: '5 5', // 점선 패턴
+        strokeWidth: 2,
       },
-      
+
       // 연결 방향 표시 라벨
       label: `${fromId} → ${toId}`,
-      
+
       // 데이터 흐름 애니메이션 효과
       animated: true,
-      
+
       // 메타데이터 (중복 제거용)
       data: {
         key: undirectedKey(fromId, toId),
-        isTrace: true,              // 트레이스 엣지 식별용
+        isTrace: true, // 트레이스 엣지 식별용
         mode,
         cableId: c.cableId,
         fromDeviceId: fromId,
@@ -305,14 +308,14 @@ export function mapTraceCablesToEdges(
 
 /**
  * 트레이스 경로와 겹치는 기본 케이블 엣지 제거
- * 
+ *
  * 트레이스 경로가 활성화될 때 같은 연결을 나타내는 기본 케이블 엣지를
  * 숨겨서 시각적 혼란을 방지. 두 단계 매칭으로 정확한 중복 감지.
- * 
+ *
  * 매칭 우선순위:
  * 1. 케이블 ID 직접 매칭 (정확한 물리적 케이블)
  * 2. 연결 키 매칭 (같은 장비 간 연결)
- * 
+ *
  * @param baseEdges 기본 케이블 엣지 배열
  * @param traceEdges 트레이스 경로 엣지 배열
  * @returns 중복이 제거된 기본 케이블 엣지 배열
@@ -324,15 +327,15 @@ export function excludeTraceOverlaps(baseEdges: Edge[], traceEdges: Edge[]): Edg
 
   for (const te of traceEdges) {
     const d = te.data as Record<string, unknown> | undefined;
-    
+
     // 케이블 ID 수집 (물리적 케이블 식별)
-    const cid = typeof d?.cableId === "string" ? d.cableId : undefined;
+    const cid = typeof d?.cableId === 'string' ? d.cableId : undefined;
     if (cid) {
       traceCableIds.add(cid);
     }
-    
-    // 연결 키 수집 (논리적 연결 식별)  
-    const k = typeof d?.key === "string" ? d.key : undefined;
+
+    // 연결 키 수집 (논리적 연결 식별)
+    const k = typeof d?.key === 'string' ? d.key : undefined;
     if (k) {
       traceKeys.add(k);
     }
@@ -341,46 +344,46 @@ export function excludeTraceOverlaps(baseEdges: Edge[], traceEdges: Edge[]): Edg
   // 기본 엣지에서 겹치는 것들 필터링
   return baseEdges.filter((be) => {
     const d = be.data as Record<string, unknown> | undefined;
-    
+
     // 1순위: 케이블 ID 매칭 확인
-    const baseCid = typeof d?.cableId === "string" ? d.cableId : undefined;
+    const baseCid = typeof d?.cableId === 'string' ? d.cableId : undefined;
     if (baseCid && traceCableIds.has(baseCid)) {
       return false; // 같은 물리적 케이블이므로 제외
     }
-    
-    // 2순위: 연결 키 매칭 확인  
-    const baseKey = typeof d?.key === "string" ? d.key : undefined;
+
+    // 2순위: 연결 키 매칭 확인
+    const baseKey = typeof d?.key === 'string' ? d.key : undefined;
     if (baseKey && traceKeys.has(baseKey)) {
       return false; // 같은 논리적 연결이므로 제외
     }
-    
+
     return true; // 겹치지 않으므로 유지
   });
 }
 
 /**
  *  가이드
- * 
+ *
  * 1. 새로운 케이블 타입 추가:
  *    - CableDto, CableEdge 인터페이스에 속성 추가
  *    - normalizeCableDto, normalizeCableEdge 함수 수정
  *    - 필요시 새로운 스타일 매핑 추가
- * 
+ *
  * 2. 레거시 API 변경:
  *    - LegacyCableDto, LegacyCableEdge 인터페이스 수정
  *    - 정규화 함수의 변환 로직 업데이트
  *    - 하위 호환성 유지 필수
- * 
+ *
  * 3. 시각적 스타일 변경:
  *    - mapCablesToEdges의 style 속성 수정
  *    - mapTraceCablesToEdges의 색상/패턴 변경
  *    - CustomEdge 컴포넌트와 일관성 유지
- * 
+ *
  * 4. 성능 최적화:
  *    - 대량 케이블 처리 시 excludeTraceOverlaps 최적화 고려
  *    - Set 자료구조는 이미 O(1) 조회로 최적화됨
  *    - 메모이제이션 추가 시 timestamp 의존성 주의
- * 
+ *
  * 5. 디버깅:
  *    - 엣지 data 속성에 디버깅 정보 포함됨
  *    - undirectedKey로 연결 관계 추적 가능

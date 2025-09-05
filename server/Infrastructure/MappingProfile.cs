@@ -5,7 +5,8 @@ using TraceNet.DTOs;
 namespace TraceNet.Infrastructure
 {
     /// <summary>
-    /// AutoMapper 프로파일: 모델과 DTO 간의 매핑 규칙 정의
+    /// AutoMapper profile that defines mapping rules between domain models and DTOs. 
+    /// Includes mappings for ports and cable connections.
     /// </summary>
     public class MappingProfile : Profile
     {

@@ -1,89 +1,88 @@
 /**
  * @fileoverview Network Monitoring Control Bar Component
- * @description TraceNet 시스템의 상단 제어 패널 컴포넌트
+ * @description Top control panel component for the TraceNet system
  *
  * @overview
- * 네트워크 장비 검색, 필터링, 상태 모니터링 및 일괄 작업을 위한 통합 UI 컴포넌트입니다.
- * 실시간 장비 상태 통계와 Ping 기능, JSON 데이터 업로드 기능을 제공합니다.
+ * Integrated UI component for network device search, filtering, status monitoring, and batch operations.
+ * Provides real-time device status statistics, Ping functionality, and JSON data upload features.
  */
 
-import { useRef, useState } from "react";
-import { DeviceStatus } from "../types/status";
+import { useState } from 'react';
+
+import { DeviceStatus } from '../types/status';
+import ImportJsonButton from './ImportJsonButton';
 
 /**
- * ControlBar 컴포넌트의 Props 인터페이스
+ * Props interface for the ControlBar component
  *
  * @interface ControlBarProps
- * @description 상위 컴포넌트(MainPage)와의 데이터 연동을 위한 인터페이스 정의
+ * @description Interface definition for data integration with parent component (MainPage)
  */
 interface ControlBarProps {
-  /** 전체 데이터 새로고침 트리거 함수 */
+  /** Function to trigger complete data refresh */
   onRefresh: () => void;
 
-  /** 문제 장비만 보기 토글 함수 */
+  /** Function to toggle problem devices only view */
   onToggleProblemOnly: () => void;
 
-  /** 현재 문제 장비만 보기 상태 */
+  /** Current state of problem devices only view */
   showProblemOnly: boolean;
 
-  /** 현재 검색어 문자열 */
+  /** Current search query string */
   searchQuery: string;
 
-  /** 검색어 변경 시 호출되는 함수 */
+  /** Function called when search query changes */
   onSearchChange: (value: string) => void;
 
-  /** 검색 실행 시 호출되는 함수 (Enter 키 또는 검색 버튼) */
+  /** Function called when search is executed (Enter key or search button) */
   onSearchSubmit: () => void;
 
-  /** 장비 상태별 실시간 개수 통계 */
+  /** Real-time count statistics by device status */
   statusCounts: {
     Online: number;
     Offline: number;
     Unstable: number;
   };
 
-  /** 전체 장비 Ping 실행 함수 */
+  /** Function to execute Ping on all devices */
   onPingAll: () => void;
 
-  /** Ping 작업 진행 중 여부 */
+  /** Whether Ping operation is in progress */
   isPinging: boolean;
 
-  /** 키보드 네비게이션 활성화 여부 (선택사항) */
+  /** Whether keyboard navigation is enabled (optional) */
   keyboardNavEnabled?: boolean;
 
-  /** 키보드 네비게이션 토글 함수 (선택사항) */
+  /** Function to toggle keyboard navigation (optional) */
   onToggleKeyboardNav?: () => void;
 
-  /** 검색 오류 메시지 (검색 결과 없을 때) */
+  /** Search error message (when no search results found) */
   searchError?: string;
 
-  /** 전체 장비 상태 일괄 변경 함수 */
-  onBulkSetStatus: (
-    status: DeviceStatus,
-    enablePing?: boolean
-  ) => Promise<void> | void;
+  /** Function to bulk change device status */
+  onBulkSetStatus: (status: DeviceStatus, enablePing?: boolean) => Promise<void> | void;
 
-  /** 전체적인 작업 진행 상태 (isPinging보다 우선순위 높음) */
+  /** Overall operation in progress state (higher priority than isPinging) */
   isBusy?: boolean;
 
-  /** 문제가 있는 장비 총 개수 */
+  /** Total count of devices with problems */
   problemCount?: number;
 }
 
 /**
- * TraceNet 네트워크 모니터링 시스템의 상단 제어 패널 컴포넌트
+ * Top control panel component for the TraceNet network monitoring system
  *
  * @description
- * 사용자가 네트워크 장비를 효과적으로 관리할 수 있도록 다음 기능들을 제공합니다:
- * - 실시간 장비 검색 및 필터링
- * - 장비 상태 통계 시각화
- * - 전체/선택적 Ping 실행
- * - 문제 장비 빠른 필터링
- * - JSON 데이터 일괄 업로드
- * - 장비 상태 일괄 변경
+ * Provides the following functionality for effective network device management:
+ * - Real-time device search and filtering
+ * - Device status statistics visualization
+ * - Full/selective Ping execution
+ * - Quick filtering of problem devices
+ * - Bulk JSON data upload
+ * - Bulk device status changes
  *
- * @param {ControlBarProps} props - 컴포넌트 설정 및 이벤트 핸들러
- * @returns {JSX.Element} 렌더링된 제어 패널 UI
+ * @param {ControlBarProps} props - Component configuration and event handlers
+ * @returns {JSX.Element} Rendered control panel UI
  *
  * @example
  * ```tsx
@@ -94,7 +93,7 @@ interface ControlBarProps {
  *   statusCounts={{ Online: 150, Offline: 5, Unstable: 2 }}
  *   searchQuery={searchTerm}
  *   onSearchChange={setSearchTerm}
- *   // ... 기타 props
+ *   // ... other props
  * />
  * ```
  */
@@ -108,112 +107,51 @@ export default function ControlBar({
   statusCounts,
   onPingAll,
   isPinging,
-  //keyboardNavEnabled,      // 향후 확장을 위해 주석 처리
-  //onToggleKeyboardNav,     // 향후 확장을 위해 주석 처리
+  //keyboardNavEnabled,      // Commented out for future extension
+  //onToggleKeyboardNav,     // Commented out for future extension
   searchError,
   onBulkSetStatus,
   isBusy,
   problemCount = 0,
 }: ControlBarProps) {
-  // 파일 업로드를 위한 숨겨진 input 요소 참조
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // 일괄 상태 변경 드롭다운 메뉴 열림/닫힘 상태
+  // Open/close state for bulk status change dropdown menu
   const [openBulk, setOpenBulk] = useState(false);
 
-  // 전체 삭제 진행 상태
+  // Delete all operation in progress state
   const [deleting, setDeleting] = useState(false);
 
-  // 전체 작업 진행 상태 (isBusy가 있으면 우선, 없으면 isPinging 사용)
+  // Overall operation in progress state (isBusy takes priority, fallback to isPinging)
   const busy = isBusy ?? isPinging;
-
-  /**
-   * JSON 파일 업로드 버튼 클릭 핸들러
-   * 숨겨진 file input을 프로그래매틱하게 트리거합니다.
-   */
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  /**
-   * JSON 파일 업로드 처리 함수
-   *
-   * @description
-   * 사용자가 선택한 JSON 파일을 서버로 업로드하여 장비 데이터를 일괄 등록합니다.
-   * 대용량 데이터 처리를 위해 FormData와 multipart/form-data를 사용합니다.
-   *
-   * @param {React.ChangeEvent<HTMLInputElement>} e - 파일 선택 이벤트
-   *
-   * @async
-   * @throws {Error} 네트워크 오류 또는 서버 오류 시 예외 발생
-   *
-   * @performance
-   * - 권장 파일 크기: 10MB 이하
-   * - 예상 처리 시간: 100개 장비당 1-2초
-   *
-   * @security
-   * - JSON 형식 검증은 서버에서 수행
-   * - 파일 크기 제한은 서버 설정에 따름
-   */
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await fetch("/api/import", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const { message } = await res.json();
-        alert("❌ 업로드 실패: " + message);
-        return;
-      }
-
-      alert("✅ JSON 파일 업로드 완료!");
-      onRefresh(); // 업로드 후 장비/케이블 데이터 재로딩
-    } catch (err) {
-      alert("업로드 중 오류 발생");
-      console.error(err);
-    } finally {
-      // 같은 파일을 다시 선택할 수 있도록 input value 초기화
-      e.target.value = "";
-    }
-  };
 
   const handleDeleteAll = async () => {
     const ok = window.confirm(
-      "⚠️ 모든 장비/포트/케이블 데이터를 삭제합니다. 되돌릴 수 없습니다. 진행할까요?"
+      '⚠️ This will delete all device/port/cable data. This cannot be undone. Continue?',
     );
     if (!ok) return;
 
     try {
       setDeleting(true);
-      const res = await fetch("/api/device/all", { method: "DELETE" });
+      const res = await fetch('/api/device/all', { method: 'DELETE' });
       if (!res.ok) throw new Error(await res.text());
-      // 가장 안전: 전체 새로고침
+      // Safest approach: full page refresh
       window.location.reload();
     } catch (err) {
       console.error(err);
-      alert("삭제에 실패했습니다. 콘솔을 확인하세요.");
+      alert('Deletion failed. Please check the console.');
     } finally {
       setDeleting(false);
     }
   };
 
   /**
-   * 일괄 상태 변경 처리 함수
+   * Bulk status change processing function
    *
    * @description
-   * 선택된 상태로 모든 장비의 상태를 일괄 변경합니다.
-   * Ping 기능의 활성화/비활성화도 함께 설정할 수 있습니다.
+   * Bulk changes all devices to the selected status.
+   * Can also enable/disable Ping functionality together.
    *
-   * @param {DeviceStatus} status - 변경할 장비 상태
-   * @param {boolean} [enablePing] - Ping 기능 활성화 여부 (선택사항)
+   * @param {DeviceStatus} status - Device status to change to
+   * @param {boolean} [enablePing] - Whether to enable Ping functionality (optional)
    */
   const handleBulk = (status: DeviceStatus, enablePing?: boolean) => {
     setOpenBulk(false);
@@ -221,75 +159,68 @@ export default function ControlBar({
   };
 
   return (
-    <div className="w-full bg-white border-b border-slate-200 shadow-sm px-6 py-3 flex items-center gap-4">
-      {/* 실시간 검색창 */}
+    <div className="flex w-full items-center gap-4 border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
+      {/* Real-time search input */}
       <input
         type="text"
         placeholder={
-          searchError ? "장비 없음: 다시 입력하세요" : "장비 이름 or IP 검색..."
+          searchError ? 'No device found: please try again' : 'Search device name or IP...'
         }
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") onSearchSubmit();
+          if (e.key === 'Enter') onSearchSubmit();
         }}
-        className={`flex-1 px-4 py-2 text-sm border rounded-md outline-none transition
-          ${
-            searchError
-              ? "border-red-400 focus:ring-2 focus:ring-red-400 focus:border-red-400"
-              : "border-slate-300 focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
-          }`}
+        className={`flex-1 rounded-md border px-4 py-2 text-sm outline-none transition ${
+          searchError
+            ? 'border-red-400 focus:border-red-400 focus:ring-2 focus:ring-red-400'
+            : 'border-slate-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-400'
+        }`}
         disabled={busy}
-        aria-label="장비 검색"
+        aria-label="Device search"
         aria-invalid={!!searchError}
       />
 
-      {/* 🗑 전체 삭제 버튼 */}
+      {/* 🗑 Delete all button */}
       <button
         onClick={handleDeleteAll}
         disabled={busy || deleting}
-        aria-label="모든 장비/포트/케이블 삭제"
-        className="px-3 py-2 rounded-md text-sm border
-             border-red-300 text-red-700 bg-red-50
-             hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
-        title="모든 장비/포트/케이블 삭제"
+        aria-label="Delete all devices/ports/cables"
+        className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+        title="Delete all devices/ports/cables"
       >
-        {deleting ? "삭제 중..." : "전체 삭제"}
-      </button>  
+        {deleting ? 'Deleting...' : 'Delete All'}
+      </button>
 
-      {/* 실시간 상태 통계 표시 */}
-      <div
-        className="flex gap-2 text-xs font-medium"
-        role="status"
-        aria-live="polite"
-      >
-        <div className="px-2 py-1 rounded bg-green-100 text-green-700 flex items-center gap-1">
-          ● {statusCounts.Online}개 온라인
+      {/* Real-time status statistics display */}
+      <div className="flex gap-2 text-xs font-medium" role="status" aria-live="polite">
+        <div className="flex items-center gap-1 rounded bg-green-100 px-2 py-1 text-green-700">
+          ● {statusCounts.Online} Online
         </div>
-        <div className="px-2 py-1 rounded bg-yellow-100 text-yellow-800 flex items-center gap-1">
-          ● {statusCounts.Unstable}개 경고
+        <div className="flex items-center gap-1 rounded bg-yellow-100 px-2 py-1 text-yellow-800">
+          ● {statusCounts.Unstable} Warning
         </div>
-        <div className="px-2 py-1 rounded bg-red-100 text-red-700 flex items-center gap-1">
-          ● {statusCounts.Offline}개 오프라인
+        <div className="flex items-center gap-1 rounded bg-red-100 px-2 py-1 text-red-700">
+          ● {statusCounts.Offline} Offline
         </div>
       </div>
 
-      {/* 문제 장비 필터 토글 */}
+      {/* Problem devices filter toggle */}
       <button
         onClick={onToggleProblemOnly}
         disabled={busy || problemCount === 0}
         aria-pressed={showProblemOnly}
-        aria-label={`문제 장비만 보기 ${showProblemOnly ? "해제" : "활성화"}`}
-        className={`px-3 py-2 rounded-md text-sm border ${
+        aria-label={`Problem Devices Only ${showProblemOnly ? 'Disable' : 'Enable'}`}
+        className={`rounded-md border px-3 py-2 text-sm ${
           showProblemOnly
-            ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
-            : "bg-white text-gray-800 border-slate-300 hover:bg-slate-100"
-        } disabled:opacity-50 disabled:cursor-not-allowed transition`}
+            ? 'border-red-600 bg-red-600 text-white hover:bg-red-700'
+            : 'border-slate-300 bg-white text-gray-800 hover:bg-slate-100'
+        } transition disabled:cursor-not-allowed disabled:opacity-50`}
       >
-        🔍 문제 장비만{problemCount ? ` (${problemCount})` : ""}
+        🔍 Problem Devices Only{problemCount ? ` (${problemCount})` : ''}
       </button>
 
-      {/* 전체 상태 일괄 변경 드롭다운 */}
+      {/* Bulk status change dropdown */}
       <div className="relative">
         <button
           type="button"
@@ -297,123 +228,94 @@ export default function ControlBar({
           onClick={() => setOpenBulk((v) => !v)}
           aria-haspopup="true"
           aria-expanded={openBulk}
-          aria-label="장비 상태 일괄 변경 메뉴"
-          className="px-3 py-2 rounded-md text-sm border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          aria-label="Bulk device status change menu"
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          ⚙️ 상태 변경
+          ⚙️ Change Status
         </button>
 
-        {/* 드롭다운 메뉴 */}
+        {/* Dropdown menu */}
         {openBulk && (
           <div
-            className="absolute right-0 mt-2 w-56 rounded-md border border-slate-200 bg-white shadow-lg z-50"
+            className="absolute right-0 z-50 mt-2 w-56 rounded-md border border-slate-200 bg-white shadow-lg"
             onMouseLeave={() => setOpenBulk(false)}
             role="menu"
-            aria-label="상태 변경 옵션"
+            aria-label="Status change options"
           >
-            <MenuItem
-              label="모두 Online"
-              onClick={() => handleBulk(DeviceStatus.Online)}
-            />
-            <MenuItem
-              label="모두 Offline"
-              onClick={() => handleBulk(DeviceStatus.Offline)}
-            />
-            <MenuItem
-              label="모두 Unstable"
-              onClick={() => handleBulk(DeviceStatus.Unstable)}
-            />
-            <MenuItem
-              label="모두 Unknown"
-              onClick={() => handleBulk(DeviceStatus.Unknown)}
-            />
+            <MenuItem label="All Online" onClick={() => handleBulk(DeviceStatus.Online)} />
+            <MenuItem label="All Offline" onClick={() => handleBulk(DeviceStatus.Offline)} />
+            <MenuItem label="All Unstable" onClick={() => handleBulk(DeviceStatus.Unstable)} />
+            <MenuItem label="All Unknown" onClick={() => handleBulk(DeviceStatus.Unknown)} />
 
-            {/* 구분선 */}
+            {/* Divider */}
             <div className="my-1 border-t border-slate-200" />
 
-            {/* Ping 설정과 함께 상태 변경 */}
+            {/* Status change with Ping settings */}
             <MenuItem
-              label="모두 Online + Ping ON"
+              label="All Online + Ping ON"
               onClick={() => handleBulk(DeviceStatus.Online, true)}
             />
             <MenuItem
-              label="모두 Offline + Ping OFF"
+              label="All Offline + Ping OFF"
               onClick={() => handleBulk(DeviceStatus.Offline, false)}
             />
           </div>
         )}
       </div>
 
-      {/* 전체 Ping 실행 버튼 */}
+      {/* Ping all devices button */}
       <button
         onClick={onPingAll}
         disabled={busy}
-        aria-label={busy ? "Ping 실행 중" : "전체 장비 Ping 실행"}
-        className={`px-3 py-2 rounded-md text-sm border ${
+        aria-label={busy ? 'Ping operation in progress' : 'Execute Ping on all devices'}
+        className={`rounded-md border px-3 py-2 text-sm ${
           busy
-            ? "bg-green-400 text-white border-green-400 cursor-not-allowed"
-            : "bg-green-600 text-white border-green-600 hover:bg-green-700"
-        } disabled:opacity-75 transition flex items-center gap-1`}
+            ? 'cursor-not-allowed border-green-400 bg-green-400 text-white'
+            : 'border-green-600 bg-green-600 text-white hover:bg-green-700'
+        } flex items-center gap-1 transition disabled:opacity-75`}
       >
         {busy ? (
           <>
-            {/* 로딩 스피너 */}
-            <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
-            Ping 중...
+            {/* Loading spinner */}
+            <div className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent"></div>
+            Pinging...
           </>
         ) : (
-          <>📡 전체 Ping</>
+          <>📡 Ping All</>
         )}
       </button>
 
-      {/* 데이터 새로고침 버튼 */}
+      {/* Data refresh button */}
       <button
         onClick={onRefresh}
         disabled={busy}
-        aria-label="장비 및 케이블 데이터 새로고침"
-        className="px-3 py-2 rounded-md text-sm bg-blue-600 text-white border border-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        aria-label="Refresh device and cable data"
+        className="rounded-md border border-blue-600 bg-blue-600 px-3 py-2 text-sm text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        🔄 새로고침
+        🔄 Refresh
       </button>
 
-      {/* JSON 데이터 업로드 버튼 */}
-      <button
-        onClick={handleImportClick}
-        disabled={busy}
-        aria-label="JSON 파일로 장비 데이터 일괄 업로드"
-        className="px-3 py-2 rounded-md text-sm bg-slate-600 text-white border border-slate-600 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-      >
-        📂 JSON 업로드
-      </button>
-
-      {/* 숨겨진 파일 input (프로그래매틱 접근용) */}
-      <input
-        type="file"
-        accept=".json"
-        ref={fileInputRef}
-        onChange={handleFileUpload}
-        className="hidden"
-        aria-hidden="true"
-      />
+      {/* JSON data upload button (reused component) */}
+      <ImportJsonButton onSuccess={onRefresh} />
     </div>
   );
 }
 
 /**
- * 드롭다운 메뉴 아이템 컴포넌트
+ * Dropdown menu item component
  *
  * @description
- * 일괄 상태 변경 드롭다운에서 사용되는 개별 메뉴 아이템입니다.
- * 접근성을 위해 키보드 네비게이션과 ARIA 속성을 지원합니다.
+ * Individual menu item used in the bulk status change dropdown.
+ * Supports keyboard navigation and ARIA attributes for accessibility.
  *
- * @param {Object} props - 메뉴 아이템 속성
- * @param {string} props.label - 메뉴 아이템에 표시될 텍스트
- * @param {() => void} props.onClick - 클릭 시 실행될 함수
+ * @param {Object} props - Menu item properties
+ * @param {string} props.label - Text to display in the menu item
+ * @param {() => void} props.onClick - Function to execute on click
  *
  * @example
  * ```tsx
  * <MenuItem
- *   label="모두 Online"
+ *   label="All Online"
  *   onClick={() => handleBulkChange(DeviceStatus.Online)}
  * />
  * ```
@@ -424,7 +326,7 @@ function MenuItem({ label, onClick }: { label: string; onClick: () => void }) {
       type="button"
       onClick={onClick}
       role="menuitem"
-      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+      className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
     >
       {label}
     </button>
@@ -432,54 +334,54 @@ function MenuItem({ label, onClick }: { label: string; onClick: () => void }) {
 }
 
 /**
- * @accessibility 접근성 고려사항
+ * @accessibility Accessibility Considerations
  *
- * 1. 키보드 네비게이션
- *    - Tab 키로 모든 버튼 접근 가능
- *    - Enter/Space로 버튼 활성화
- *    - 드롭다운 메뉴 화살표 키 지원 (향후 구현)
+ * 1. Keyboard Navigation
+ *    - All buttons accessible via Tab key
+ *    - Button activation via Enter/Space
+ *    - Dropdown menu arrow key support (future implementation)
  *
- * 2. 스크린 리더 지원
- *    - aria-label로 버튼 목적 명시
- *    - aria-pressed로 토글 상태 표시
- *    - role 속성으로 UI 구조 명확화
+ * 2. Screen Reader Support
+ *    - aria-label specifies button purpose
+ *    - aria-pressed shows toggle state
+ *    - role attributes clarify UI structure
  *
- * 3. 시각적 피드백
- *    - focus 상태 시각화
- *    - disabled 상태 명확한 구분
- *    - 상태 변화 시 적절한 색상 대비
+ * 3. Visual Feedback
+ *    - Focus state visualization
+ *    - Clear distinction of disabled state
+ *    - Appropriate color contrast for state changes
  */
 
 /**
- * @performance 성능 최적화 사항
+ * @performance Performance Optimization
  *
- * 1. React 최적화
- *    - useRef로 DOM 직접 접근 최소화
- *    - 조건부 렌더링으로 불필요한 DOM 생성 방지
- *    - 이벤트 핸들러 메모이제이션 (상위 컴포넌트에서 처리)
+ * 1. React Optimization
+ *    - Encapsulated file upload in ImportJsonButton to minimize direct DOM access
+ *    - Conditional rendering prevents unnecessary DOM creation
+ *    - Event handler memoization (handled in parent component)
  *
- * 2. 사용자 경험 최적화
- *    - 로딩 상태 시각적 피드백
- *    - 버튼 비활성화로 중복 클릭 방지
- *    - 실시간 상태 업데이트
+ * 2. User Experience Optimization
+ *    - Visual feedback for loading states
+ *    - Button disabling prevents duplicate clicks
+ *    - Real-time status updates
  *
- * 3. 메모리 관리
- *    - 파일 업로드 후 input value 초기화
- *    - 드롭다운 자동 닫힘으로 메모리 누수 방지
+ * 3. Memory Management
+ *    - Automatic dropdown closing prevents memory leaks
  */
 
 /**
- * @integration 다른 컴포넌트와의 연동
+ * @integration Integration with Other Components
  *
  * 1. MainPage.tsx
- *    - 모든 이벤트 핸들러와 상태 데이터 제공
- *    - 검색 결과와 필터링 로직 처리
+ *    - Provides all event handlers and state data
+ *    - Handles search results and filtering logic
  *
  * 2. NetworkDiagram.tsx
- *    - 상태 변경 시 노드 색상 업데이트
- *    - Ping 결과 시각적 반영
+ *    - Updates node colors on status changes
+ *    - Visual reflection of Ping results
  *
  * 3. SidePanel.tsx
- *    - 선택된 장비 정보와 동기화
- *    - 상세 정보 업데이트 트리거
+ *    - Synchronizes with selected device information
+ *    - Triggers detailed information updates
  */
+  

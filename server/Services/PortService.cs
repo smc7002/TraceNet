@@ -5,7 +5,7 @@ using TraceNet.Models;
 namespace TraceNet.Services
 {
     /// <summary>
-    /// 포트(Port) 관련 데이터 조회를 담당하는 서비스 클래스
+    /// Service class responsible for querying port-related data.
     /// </summary>
     public class PortService
     {
@@ -17,7 +17,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 지정된 DeviceId에 속한 모든 포트 조회
+        /// Retrieve all ports that belong to the specified DeviceId.
         /// </summary>
         public async Task<List<Port>> GetByDeviceIdAsync(int deviceId)
         {
@@ -27,7 +27,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 특정 포트 ID가 존재하는지 확인
+        /// Check whether a port exists for the given port ID.
         /// </summary>
         public async Task<bool> ExistsAsync(int portId)
         {
@@ -35,7 +35,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 모든 포트를 장비 정보와 함께 조회
+        /// Retrieve all ports along with their associated device information.
         /// </summary>
         public async Task<List<Port>> GetAllWithDeviceAsync()
         {

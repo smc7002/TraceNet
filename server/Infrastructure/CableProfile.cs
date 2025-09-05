@@ -5,27 +5,28 @@ using TraceNet.Models;
 namespace TraceNet.Infrastructure
 {
     /// <summary>
-    /// 케이블 연결 정보를 DTO로 변환하는 AutoMapper 프로필
-    /// CableConnection (복합 엔티티) → CableDto (평면 구조) 매핑
+    /// AutoMapper profile for converting cable connection entities into DTOs.
+    /// Maps the composite entity CableConnection (Cable + FromPort + ToPort) 
+    /// into a flat structure CableDto for easier frontend consumption.
     /// </summary>
     public class CableProfile : Profile
     {
         public CableProfile()
         {
-            // CableConnection은 Cable + FromPort + ToPort 관계를 포함하는 복합 엔티티
-            // CableDto는 프론트엔드에서 사용하기 쉬운 평면 구조
+            // CableConnection is a composite entity that includes Cable, FromPort, and ToPort
+            // CableDto is a flattened structure optimized for frontend usage
             CreateMap<CableConnection, CableDto>()
                 
-                // 케이블 기본 정보 (Cable 엔티티에서)
+                // Basic cable information (from Cable entity)
                 .ForMember(dest => dest.CableId, opt => opt.MapFrom(src => src.Cable.CableId))
                 .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Cable.Description))
                 
-                // 출발점 정보 (FromPort → Device 경로)
+                // Source information (FromPort → Device path)
                 .ForMember(dest => dest.FromDevice, opt => opt.MapFrom(src => src.FromPort.Device.Name))
                 .ForMember(dest => dest.FromPort, opt => opt.MapFrom(src => src.FromPort.Name))
                 .ForMember(dest => dest.FromDeviceId, opt => opt.MapFrom(src => src.FromPort.Device.DeviceId))
                 
-                // 도착점 정보 (ToPort → Device 경로)
+                // Destination information (ToPort → Device path)
                 .ForMember(dest => dest.ToDevice, opt => opt.MapFrom(src => src.ToPort.Device.Name))
                 .ForMember(dest => dest.ToPort, opt => opt.MapFrom(src => src.ToPort.Name))
                 .ForMember(dest => dest.ToDeviceId, opt => opt.MapFrom(src => src.ToPort.Device.DeviceId));
@@ -33,30 +34,30 @@ namespace TraceNet.Infrastructure
     }
 
     /*
-     * 매핑 구조 설명:
+     * Mapping structure overview:
      * 
-     * [데이터베이스] 
+     * [Database]
      * CableConnection
-     * ├── Cable (케이블 정보)
+     * ├── Cable (cable details)
      * │   ├── CableId
-     * │   └── Description
-     * ├── FromPort (출발 포트)
+     * │   └── Description ...
+     * ├── FromPort (source port)
      * │   ├── Name
      * │   └── Device
      * │       ├── Name
-     * │       └── DeviceId
-     * └── ToPort (도착 포트)
+     * │       └── DeviceId ...
+     * └── ToPort (destination port)
      *     ├── Name
      *     └── Device
      *         ├── Name
-     *         └── DeviceId
+     *         └── DeviceId ...
      * 
-     * [API 응답]
+     * [API Response]
      * CableDto 
      * ├── CableId, Description
      * ├── FromDevice, FromPort, FromDeviceId
      * └── ToDevice, ToPort, ToDeviceId
      * 
-     * 프론트엔드에서 중첩 객체 접근 없이 바로 사용 가능
+     * → Allows frontend to access data directly without nested object traversal
      */
 }

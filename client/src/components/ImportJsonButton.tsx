@@ -1,51 +1,63 @@
 // components/ImportJsonButton.tsx
-// 로컬 JSON 파일을 선택해 서버로 업로드하는 버튼 컴포넌트
-// 서버는 multipart/form-data로 업로드되는 "file" 필드를 받는다고 가정
+// Button component to select a local JSON file and upload it to the server
+// Assumes the server accepts a multipart/form-data field named "file"
 
-import { useRef } from "react";
-import axios from "axios";
+import axios from 'axios';
+import { useRef } from 'react';
 
-export default function ImportJsonButton({ onSuccess }: { onSuccess: () => void }) {
-  // 숨겨진 <input type="file">에 접근하기 위한 ref
+interface Props {
+  onSuccess: () => void;
+  /** Disable the button (e.g., when busy) */
+  disabled?: boolean;
+  /** Override button class; defaults match original ControlBar style */
+  className?: string;
+  /** Override label text */
+  label?: string;
+}
+
+export default function ImportJsonButton({
+  onSuccess,
+  disabled,
+  className = 'rounded-md border border-slate-600 bg-slate-600 px-3 py-2 text-sm text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50',
+  label = '📂 Upload JSON',
+}: Props) {
+  // Ref to access the hidden <input type="file">
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /** Trigger hidden file input */
+  const handleClick = () => {
+    if (disabled) return;
+    fileInputRef.current?.click();
+  };
+
   /**
-   * 파일 선택 변경 핸들러
-   * - 사용자가 파일을 고르면 FormData로 래핑해 업로드
-   * - 성공 시 상위 콜백(onSuccess) 호출하여 목록/화면 갱신
+   * File selection change handler
+   * - Wraps the selected file in FormData and uploads it
+   * - Calls the parent onSuccess callback to refresh the list/UI on success
    */
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 백엔드가 multipart/form-data의 "file" 키로 받도록 일치시킴
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append('file', file);
 
     try {
-      await axios.post("/api/import", formData);
-      alert("✅ JSON 데이터가 성공적으로 업로드되었습니다.");
+      await axios.post('/api/import', formData);
+      alert('✅ JSON data uploaded successfully.');
       onSuccess();
-
-      // (선택) 같은 파일을 연속 업로드할 수 있도록 입력값 리셋이 필요하면 아래 주석 해제
-      // e.currentTarget.value = "";
+      // e.currentTarget.value = '';
     } catch (err) {
-      // 서버 메시지를 노출하려면 err 타입 가드를 추가할 수 있음
-      alert("❌ 업로드 실패: " + (err as Error).message);
+      alert('❌ Upload failed: ' + (err as Error).message);
     }
   };
 
   return (
-    <div className="mb-4">
-      {/* 파일 선택 트리거 버튼 (숨겨진 input 클릭) */}
-      <button
-        onClick={() => fileInputRef.current?.click()}
-        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-      >
-        📂 JSON 업로드
+    <>
+      <button onClick={handleClick} disabled={disabled} className={className}>
+        {label}
       </button>
-
-      {/* 실제 파일 입력: 화면에서는 숨김, 버튼으로만 트리거 */}
+      {/* Actual file input: hidden, only triggered by button */}
       <input
         type="file"
         ref={fileInputRef}
@@ -53,6 +65,6 @@ export default function ImportJsonButton({ onSuccess }: { onSuccess: () => void 
         onChange={handleFileChange}
         className="hidden"
       />
-    </div>
+    </>
   );
 }

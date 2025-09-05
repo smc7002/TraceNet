@@ -1,4 +1,4 @@
-// 📁 DTOs/CableDto.cs
+// DTOs/CableDto.cs
 
 namespace TraceNet.DTOs
 {

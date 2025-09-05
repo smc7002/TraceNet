@@ -1,78 +1,79 @@
 /**
- * SidePanel.tsx - 네트워크 장비 및 케이블 관리를 위한 사이드 패널 컴포넌트
+ * SidePanel.tsx - Side panel component for network device and cable management
  *
- * 주요 기능:
- * - 선택된 장비의 상세 정보 표시 및 설정 관리
- * - 케이블 연결 정보 조회 및 관리
- * - 새 장비/케이블 등록 폼 제공
- * - 실시간 포트 연결 상태 모니터링 (스위치 전용)
- * - 네트워크 경로 추적(Trace) 결과 표시
+ * Main features:
+ * - Display and manage detailed information of selected devices
+ * - View and manage cable connection information
+ * - Provide forms for registering new devices/cables
+ * - Monitor real-time port connection status (switch only)
+ * - Display network path tracing (Trace) results
  *
- * 컴포넌트 구조:
- * - 조건부 렌더링으로 3가지 패널 모드 제공
- * - 각 패널은 독립적인 기능을 담당하는 하위 컴포넌트로 구성
- * - 에러 처리 및 로딩 상태 관리를 통한 안정적인 UX 제공
+ * Component structure:
+ * - Provides 3 panel modes through conditional rendering
+ * - Each panel consists of sub-components handling independent functionality
+ * - Stable UX through error handling and loading state management
  *
- * 사용 사례:
- * - 네트워크 관리자의 장비 설정 및 모니터링
- * - 케이블 연결 관계 파악 및 문제 진단
- * - 신규 장비 등록 및 기존 장비 삭제
+ * Use cases:
+ * - Network administrator device configuration and monitoring
+ * - Cable connection relationship identification and problem diagnosis
+ * - New device registration and existing device deletion
  */
 
-import { useState, useEffect } from "react";
-import type { AxiosError } from "axios";
-import type { ReactNode } from "react";
-import DeviceForm from "./DeviceForm";
-import CableForm from "./CableForm";
+import type { AxiosError } from 'axios';
+import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+
 import {
+  deleteCable,
+  deleteDevice,
   fetchPortsByDevice,
   updateDeviceStatus,
-  deleteDevice,
-  deleteCable,
-} from "../api/deviceApi";
-import type { Device } from "../types/device";
-import type { CableDto } from "../types/cable";
-import type { TraceResponse } from "../types/trace";
-import type { Port } from "../types/port";
-import { DeviceStatus } from "../types/status";
+} from '../api/deviceApi';
+import type { CableDto } from '../types/cable';
+import type { Device } from '../types/device';
+import type { Port } from '../types/port';
+import { DeviceStatus } from '../types/status';
+import type { TraceResponse } from '../types/trace';
+import CableForm from './CableForm';
+import DeviceForm from './DeviceForm';
 
 /**
- * SidePanel 컴포넌트의 Props 인터페이스
- * 메인 페이지에서 전달받는 모든 상태와 콜백 함수들을 정의
+ * Props interface for SidePanel component
+ * Defines all states and callback functions received from the main page
  */
 interface SidePanelProps {
-  selectedDevice: Device | null; // 현재 선택된 장비
-  selectedCable: CableDto | null; // 현재 선택된 케이블
-  traceResult: TraceResponse | null; // 경로 추적 결과
-  traceError: string | null; // 추적 에러 메시지
-  filteredCables: CableDto[]; // 검색 필터링된 케이블 목록
-  setSelectedDevice: (device: Device | null) => void; // 장비 선택 상태 변경
-  setSelectedCable: (cable: CableDto | null) => void; // 케이블 선택 상태 변경
-  refetchDevices: () => Promise<void>; // 장비 목록 재조회
-  refetchCables: () => Promise<void>; // 케이블 목록 재조회
-  devices: Device[]; // 전체 장비 목록 (포트 연결 정보용)
+  selectedDevice: Device | null; // Currently selected device
+  selectedCable: CableDto | null; // Currently selected cable
+  traceResult: TraceResponse | null; // Path tracing result
+  traceError: string | null; // Trace error message
+  filteredCables: CableDto[]; // Search-filtered cable list
+  setSelectedDevice: (device: Device | null) => void; // Change device selection state
+  setSelectedCable: (cable: CableDto | null) => void; // Change cable selection state
+  refetchDevices: () => Promise<void>; // Re-query device list
+  refetchCables: () => Promise<void>; // Re-query cable list
+  devices: Device[]; // Complete device list (for port connection info)
 }
 
 /**
- * 스위치 포트의 연결 상태를 나타내는 인터페이스
- * 물리적 포트와 논리적 케이블 연결 정보를 통합 관리
+ * Interface representing the connection status of switch ports
+ * Integrated management of physical ports and logical cable connection information
  */
 interface PortConnection {
-  portNumber: number; // 포트 번호 (1부터 시작)
-  isActive: boolean; // 포트 활성화 상태
-  connectedDevice?: string; // 연결된 장비명
-  connectedDeviceType?: string; // 연결된 장비 타입
-  connectedDeviceStatus?: string; // 연결된 장비 상태
-  cableId?: string | number; // 케이블 ID (연결된 경우)
+  portNumber: number; // Port number (starting from 1)
+  isActive: boolean; // Port activation status
+  connectedDevice?: string; // Connected device name
+  connectedDeviceType?: string; // Connected device type
+  connectedDeviceStatus?: string; // Connected device status
+  cableId?: string | number; // Cable ID (if connected)
 }
 
 /**
- * SidePanel 메인 컴포넌트
+ * SidePanel main component
  *
- * 선택 상태에 따라 다른 패널을 조건부 렌더링:
- * 1. 아무것도 선택되지 않음 → 등록 패널 (장비/케이블 등록 폼)
- * 2. 케이블 선택됨 → 케이블 정보 패널
- * 3. 장비 선택됨 → 장비 정보 패널 (상세 정보, 포트 상태, 설정)
+ * Conditionally renders different panels based on selection state:
+ * 1. Nothing selected → Registration panel (device/cable registration forms)
+ * 2. Cable selected → Cable information panel
+ * 3. Device selected → Device information panel (detailed info, port status, settings)
  */
 export default function SidePanel(props: SidePanelProps) {
   const {
@@ -89,12 +90,12 @@ export default function SidePanel(props: SidePanelProps) {
   } = props;
 
   /**
-   * 렌더링 분기 로직
+   * Rendering branch logic
    *
-   * 우선순위:
-   * 1. 케이블 선택 > 장비 선택 (케이블 정보가 더 구체적)
-   * 2. 장비 선택 > 기본 상태 (장비 상세 정보)
-   * 3. 기본 상태 > 등록 패널 (신규 등록)
+   * Priority:
+   * 1. Cable selection > Device selection (cable info is more specific)
+   * 2. Device selection > Default state (device detailed info)
+   * 3. Default state > Registration panel (new registration)
    */
   if (!selectedDevice) {
     return (
@@ -132,17 +133,17 @@ export default function SidePanel(props: SidePanelProps) {
   );
 }
 
-/* ───────────────────────── 등록 패널 ───────────────────────── */
+/* ───────────────────────── Registration Panel ───────────────────────── */
 
 /**
- * 등록 패널 컴포넌트
+ * Registration panel component
  *
- * 기능:
- * - 새 장비 등록 폼 제공
- * - 새 케이블 등록 폼 제공
- * - 케이블 검색 결과 표시 및 선택 기능
+ * Features:
+ * - Provides new device registration form
+ * - Provides new cable registration form
+ * - Displays cable search results and selection functionality
  *
- * 표시 조건: 아무 장비도 선택되지 않은 기본 상태
+ * Display condition: Default state when no device is selected
  */
 function RegistrationPanel({
   filteredCables,
@@ -156,40 +157,35 @@ function RegistrationPanel({
   refetchCables: () => Promise<void>;
 }) {
   return (
-    <aside className="w-80 shrink-0 bg-white border-l border-slate-200 p-6 space-y-6 overflow-y-auto shadow-inner">
-      <h2 className="text-lg font-semibold">🔧 장비 및 케이블 등록</h2>
+    <aside className="w-80 shrink-0 space-y-6 overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-inner">
+      <h2 className="text-lg font-semibold">🔧 Device and Cable Registration</h2>
 
-      {/* 장비 등록 폼 - 성공 시 자동으로 장비 목록 새로고침 */}
+      {/* Device registration form - automatically refreshes device list on success */}
       <DeviceForm onSuccess={refetchDevices} />
 
-      {/* 케이블 등록 폼 - 성공 시 자동으로 케이블 목록 새로고침 */}
+      {/* Cable registration form - automatically refreshes cable list on success */}
       <CableForm onSuccess={refetchCables} />
 
-      {/* 케이블 검색 결과 섹션 */}
-      <section className="pt-4 border-t border-slate-200">
-        <h3 className="text-sm font-semibold text-slate-600 mb-2">
-          🔌 케이블 검색 결과
-        </h3>
-        <CableSearchResults
-          filteredCables={filteredCables}
-          onSelectCable={setSelectedCable}
-        />
+      {/* Cable search results section */}
+      <section className="border-t border-slate-200 pt-4">
+        <h3 className="mb-2 text-sm font-semibold text-slate-600">🔌 Cable Search Results</h3>
+        <CableSearchResults filteredCables={filteredCables} onSelectCable={setSelectedCable} />
       </section>
     </aside>
   );
 }
 
-/* ───────────────────────── 케이블 패널 ───────────────────────── */
+/* ───────────────────────── Cable Panel ───────────────────────── */
 
 /**
- * 케이블 정보 패널 컴포넌트
+ * Cable information panel component
  *
- * 기능:
- * - 선택된 케이블의 상세 정보 표시
- * - 케이블 삭제 기능 (확인 다이얼로그 포함)
- * - 연결된 장비 정보 표시 (From/To)
+ * Features:
+ * - Displays detailed information of selected cable
+ * - Cable deletion functionality (with confirmation dialog)
+ * - Displays connected device information (From/To)
  *
- * 표시 조건: 케이블이 선택된 상태
+ * Display condition: When a cable is selected
  */
 function CableInfoPanel({
   selectedCable,
@@ -203,73 +199,69 @@ function CableInfoPanel({
   refetchCables: () => Promise<void>;
 }) {
   /**
-   * 케이블 삭제 핸들러
+   * Cable deletion handler
    *
-   * 처리 순서:
-   * 1. 사용자 확인 다이얼로그
-   * 2. API 호출로 케이블 삭제
-   * 3. 장비/케이블 목록 재조회 (연결 관계 업데이트)
-   * 4. 선택 상태 해제
-   * 5. 에러 처리 및 사용자 알림
+   * Processing order:
+   * 1. User confirmation dialog
+   * 2. API call to delete cable
+   * 3. Re-query device/cable lists (update connection relationships)
+   * 4. Clear selection state
+   * 5. Error handling and user notification
    */
   const handleDelete = async () => {
-    if (!confirm(`정말 케이블 ${selectedCable.cableId}을 삭제하시겠습니까?`))
-      return;
+    if (!confirm(`Are you sure you want to delete cable ${selectedCable.cableId}?`)) return;
 
     try {
       await deleteCable(selectedCable.cableId);
-      // 케이블 삭제 후 장비와 케이블 목록 모두 새로고침 (연결 상태 동기화)
+      // Refresh both device and cable lists after cable deletion (synchronize connection state)
       await Promise.all([refetchDevices(), refetchCables()]);
       setSelectedCable(null);
-      alert("삭제 완료");
+      alert('Deletion completed');
     } catch (err) {
-      alert("삭제 실패");
+      alert('Deletion failed');
       console.error(err);
     }
   };
 
   return (
-    <aside className="w-80 shrink-0 bg-white border-l border-slate-200 p-6 overflow-y-auto">
-      <h2 className="text-lg font-semibold mb-4">🔌 케이블 정보</h2>
+    <aside className="w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-6">
+      <h2 className="mb-4 text-lg font-semibold">🔌 Cable Information</h2>
 
-      {/* 케이블 기본 정보 표시 */}
+      {/* Display cable basic information */}
       <div className="space-y-3">
-        <InfoItem label="케이블 ID" value={String(selectedCable.cableId)} />
-        <InfoItem label="설명" value={selectedCable.description ?? "-"} />
+        <InfoItem label="Cable ID" value={String(selectedCable.cableId)} />
+        <InfoItem label="Description" value={selectedCable.description ?? '-'} />
         <InfoItem
-          label="From 장비"
+          label="From Device"
           value={`${selectedCable.fromDevice} (${selectedCable.fromPort})`}
         />
-        <InfoItem
-          label="To 장비"
-          value={`${selectedCable.toDevice} (${selectedCable.toPort})`}
-        />
+        <InfoItem label="To Device" value={`${selectedCable.toDevice} (${selectedCable.toPort})`} />
       </div>
 
-      {/* 케이블 삭제 버튼 */}
+      {/* Cable deletion button */}
       <button
-        className="mt-6 w-full bg-red-500 text-white py-2 rounded hover:bg-red-600 transition"
+        className="mt-6 w-full rounded bg-red-500 py-2 text-white transition hover:bg-red-600"
         onClick={handleDelete}
       >
-        🗑️ 이 케이블 삭제하기
+        🗑️ Delete This Cable
       </button>
     </aside>
   );
 }
 
-/* ───────────────────────── 장비 패널 ───────────────────────── */
+/* ───────────────────────── Device Panel ───────────────────────── */
 
 /**
- * 장비 정보 패널 컴포넌트
+ * Device information panel component
  *
- * 기능:
- * - 장비 기본 정보 표시 (이름, IP, 타입 등)
- * - 스위치인 경우 포트 연결 상태 모니터링
- * - 네트워크 경로 추적 결과 표시
- * - 장비 상태 및 Ping 설정 제어
- * - 장비 삭제 기능 (연결된 케이블도 함께 삭제)
+ * Features:
+ * - Display device basic information (name, IP, type, etc.)
+ * - Monitor port connection status for switches
+ * - Display network path tracing results
+ * - Control device status and Ping settings
+ * - Device deletion functionality (also deletes connected cables)
  *
- * 표시 조건: 장비가 선택되었지만 케이블은 선택되지 않은 상태
+ * Display condition: When device is selected but cable is not selected
  */
 function DeviceInfoPanel({
   selectedDevice,
@@ -293,18 +285,18 @@ function DeviceInfoPanel({
   const [deleting, setDeleting] = useState(false);
 
   /**
-   * 장비 삭제 핸들러
+   * Device deletion handler
    *
-   * 고급 에러 처리 패턴:
-   * 1. 낙관적 업데이트: 즉시 선택 해제 (빠른 UX)
-   * 2. API 호출 및 데이터 새로고침
-   * 3. 실패 시 선택 상태 복원 (롤백)
-   * 4. 상세한 에러 메시지 표시
+   * Advanced error handling pattern:
+   * 1. Optimistic update: immediately clear selection (fast UX)
+   * 2. API call and data refresh
+   * 3. Restore selection state on failure (rollback)
+   * 4. Display detailed error message
    */
   const handleDelete = async () => {
     if (
       !confirm(
-        `정말 ${selectedDevice.name} 장비를 삭제하시겠습니까?\n연결된 케이블들도 모두 삭제됩니다.`
+        `Are you sure you want to delete device ${selectedDevice.name}?\nAll connected cables will also be deleted.`,
       )
     )
       return;
@@ -312,24 +304,24 @@ function DeviceInfoPanel({
     try {
       setDeleting(true);
 
-      // 낙관적 업데이트: 즉시 UI에서 제거 (사용자 경험 향상)
+      // Optimistic update: immediately remove from UI (improve user experience)
       setSelectedDevice(null);
 
-      // 실제 삭제 작업 수행
+      // Perform actual deletion operation
       await deleteDevice(selectedDevice.deviceId);
 
-      // 장비와 케이블 목록 모두 새로고침 (CASCADE 삭제 반영)
+      // Refresh both device and cable lists (reflect CASCADE deletion)
       await Promise.all([refetchDevices(), refetchCables()]);
 
-      console.log("✅ 삭제 완료 및 상태 갱신됨");
+      console.log('✅ Deletion completed and state updated');
     } catch (err) {
-      // 실패 시 선택 상태 복원 (롤백)
+      // Restore selection state on failure (rollback)
       setSelectedDevice(selectedDevice);
 
-      // 상세한 에러 메시지 추출 및 표시
+      // Extract and display detailed error message
       const error = err as AxiosError<{ message: string }>;
       const message = error.response?.data?.message ?? error.message;
-      alert(`삭제 실패: ${message}`);
+      alert(`Deletion failed: ${message}`);
       console.error(err);
     } finally {
       setDeleting(false);
@@ -337,27 +329,27 @@ function DeviceInfoPanel({
   };
 
   return (
-    <aside className="w-80 shrink-0 flex flex-col bg-white border-l border-slate-200 shadow-md">
-      {/* 장비 정보 헤더 */}
+    <aside className="flex w-80 shrink-0 flex-col border-l border-slate-200 bg-white shadow-md">
+      {/* Device information header */}
       <DeviceHeader device={selectedDevice} />
 
-      {/* Rack 표시: 헤더 바로 아래, 스위치일 때만 */}
-      {selectedDevice.type?.toLowerCase() === "switch" && (
-        <div className="px-4 pt-2 pb-1 border-b border-slate-100">
-          <span className="text-xs text-slate-500 mr-1">📦 Rack 목록: </span>
+      {/* Rack display: right below header, only for switches */}
+      {selectedDevice.type?.toLowerCase() === 'switch' && (
+        <div className="border-b border-slate-100 px-4 pb-1 pt-2">
+          <span className="mr-1 text-xs text-slate-500">📦 Rack List: </span>
           <span className="text-xs font-medium text-slate-700">
-            {selectedDevice.rackName ?? "-"}
+            {selectedDevice.rackName ?? '-'}
           </span>
         </div>
       )}
 
-      {/* 메인 콘텐츠 영역 (스크롤 가능) */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 text-sm">
-        {/* 기본 장비 정보 */}
+      {/* Main content area (scrollable) */}
+      <div className="flex-1 space-y-6 overflow-y-auto p-4 text-sm">
+        {/* Basic device information */}
         <DeviceBasicInfo device={selectedDevice} />
 
-        {/* 스위치인 경우에만 포트 연결 상태 표시 */}
-        {selectedDevice.type?.toLowerCase() === "switch" && (
+        {/* Display port connection status only for switches */}
+        {selectedDevice.type?.toLowerCase() === 'switch' && (
           <PortConnectionStatus
             device={selectedDevice}
             filteredCables={filteredCables}
@@ -365,10 +357,10 @@ function DeviceInfoPanel({
           />
         )}
 
-        {/* 네트워크 경로 추적 결과 */}
+        {/* Network path tracing results */}
         <TraceResultSection traceResult={traceResult} traceError={traceError} />
 
-        {/* 장비 상태 및 Ping 설정 제어 */}
+        {/* Device status and Ping setting controls */}
         <DeviceStatusControls
           device={selectedDevice}
           setSelectedDevice={setSelectedDevice}
@@ -376,29 +368,29 @@ function DeviceInfoPanel({
         />
       </div>
 
-      {/* 하단 고정 삭제 버튼 */}
-      <div className="p-4 border-t border-slate-200 bg-white">
+      {/* Bottom fixed deletion button */}
+      <div className="border-t border-slate-200 bg-white p-4">
         <button
-          className="bg-red-500 text-white rounded w-full py-2 hover:bg-red-600 transition disabled:opacity-50"
+          className="w-full rounded bg-red-500 py-2 text-white transition hover:bg-red-600 disabled:opacity-50"
           onClick={handleDelete}
           disabled={deleting}
         >
-          🗑️ 이 장비 삭제하기
+          🗑️ Delete This Device
         </button>
       </div>
     </aside>
   );
 }
 
-/* ───────────────────────── 하위 컴포넌트 ───────────────────────── */
+/* ───────────────────────── Sub Components ───────────────────────── */
 
 /**
- * 케이블 검색 결과 표시 컴포넌트
+ * Cable search results display component
  *
- * 기능:
- * - 필터링된 케이블 목록을 버튼 형태로 표시
- * - 케이블 클릭 시 상세 정보 패널로 전환
- * - 빈 결과에 대한 적절한 안내 메시지
+ * Features:
+ * - Display filtered cable list in button form
+ * - Switch to detailed information panel on cable click
+ * - Appropriate guidance message for empty results
  */
 function CableSearchResults({
   filteredCables,
@@ -408,19 +400,18 @@ function CableSearchResults({
   onSelectCable: (cable: CableDto | null) => void;
 }) {
   return (
-    <div className="space-y-2 text-sm max-h-48 overflow-y-auto">
+    <div className="max-h-48 space-y-2 overflow-y-auto text-sm">
       {filteredCables.length === 0 ? (
-        <div className="text-slate-400">검색 결과 없음</div>
+        <div className="text-slate-400">No search results</div>
       ) : (
         filteredCables.map((cable) => (
           <button
             key={String(cable.cableId)}
             onClick={() => onSelectCable(cable)}
-            className="block w-full text-left border px-2 py-1 rounded hover:bg-slate-100"
+            className="block w-full rounded border px-2 py-1 text-left hover:bg-slate-100"
           >
-            {/* 케이블 설명이 있으면 표시, 없으면 ID만 표시 */}
-            {cable.description ? `${cable.description} — ` : ""}(
-            {String(cable.cableId)})
+            {/* Display cable description if available, otherwise just ID */}
+            {cable.description ? `${cable.description} — ` : ''}({String(cable.cableId)})
           </button>
         ))
       )}
@@ -429,39 +420,37 @@ function CableSearchResults({
 }
 
 /**
- * 장비 헤더 컴포넌트
- * 선택된 장비의 기본 식별 정보를 상단에 고정 표시
+ * Device header component
+ * Fixed display of basic identification information of selected device at the top
  */
 function DeviceHeader({ device }: { device: Device }) {
   return (
-    <div className="p-4 border-b border-slate-200 bg-slate-50">
+    <div className="border-b border-slate-200 bg-slate-50 p-4">
       <div className="text-lg font-semibold">{device.name}</div>
       <div className="text-sm text-slate-500">
-        {device.ipAddress ?? "IP 미지정"} • {device.status} • 방금 전
+        {device.ipAddress ?? 'IP unspecified'} • {device.status} • just now
       </div>
     </div>
   );
 }
 
 /**
- * 장비 기본 정보 컴포넌트
- * IP 주소, 장비 타입 등 기본적인 장비 속성 표시
+ * Device basic information component
+ * Display basic device attributes such as IP address, device type, etc.
  */
 function DeviceBasicInfo({ device }: { device: Device }) {
   return (
     <section>
-      <div className="text-slate-700 font-semibold mb-3">📊 장비 정보</div>
+      <div className="mb-3 font-semibold text-slate-700">📊 Device Information</div>
       <div className="space-y-2">
-        <InfoItem label="IP 주소" value={device.ipAddress ?? "-"} />
-        <InfoItem label="장비 유형" value={device.type ?? "-"} />
+        <InfoItem label="IP Address" value={device.ipAddress ?? '-'} />
+        <InfoItem label="Device Type" value={device.type ?? '-'} />
 
-        {/* 스위치일 경우에만 Rack 표시 */}
-        {device.type?.toLowerCase() === "switch" && (
-          <div className="flex justify-between items-center py-1">
+        {/* Display Rack only for switches */}
+        {device.type?.toLowerCase() === 'switch' && (
+          <div className="flex items-center justify-between py-1">
             <span className="text-slate-500">Rack</span>
-            <span className="font-medium text-slate-700">
-              {device.rackName ?? "-"}
-            </span>
+            <span className="font-medium text-slate-700">{device.rackName ?? '-'}</span>
           </div>
         )}
       </div>
@@ -469,21 +458,21 @@ function DeviceBasicInfo({ device }: { device: Device }) {
   );
 }
 
-/* ───────── 포트 연결 상태 ───────── */
+/* ───────── Port Connection Status ───────── */
 
 /**
- * 포트 연결 상태 컴포넌트 (스위치 전용)
+ * Port connection status component (switch only)
  *
- * 기능:
- * - 스위치의 모든 포트 상태를 실시간으로 조회 및 표시
- * - 각 포트별 연결된 장비 정보 표시
- * - 포트 활성화 상태 시각적 표시 (LED 스타일)
- * - 케이블 연결 정보와 장비 정보를 통합하여 표시
+ * Features:
+ * - Real-time query and display of all port status on switches
+ * - Display connected device information for each port
+ * - Visual display of port activation status (LED style)
+ * - Integrated display of cable connection information and device information
  *
- * 데이터 소스:
- * - 포트 정보: fetchPortsByDevice API (물리적 포트 상태)
- * - 연결 정보: filteredCables (논리적 케이블 연결)
- * - 장비 정보: devices (연결된 장비의 상태/타입)
+ * Data sources:
+ * - Port information: fetchPortsByDevice API (physical port status)
+ * - Connection information: filteredCables (logical cable connections)
+ * - Device information: devices (status/type of connected devices)
  */
 function PortConnectionStatus({
   device,
@@ -498,24 +487,24 @@ function PortConnectionStatus({
   const [portConnections, setPortConnections] = useState<PortConnection[]>([]);
 
   /**
-   * 성능 최적화: device 객체 직접 의존 대신 필요한 값만 추출
-   * device 객체의 다른 속성 변경 시 불필요한 재실행 방지
+   * Performance optimization: extract only necessary values instead of direct device object dependency
+   * Prevents unnecessary re-execution when other properties of device object change
    */
   const deviceId = device.deviceId;
   const currentName = device.name;
 
   /**
-   * 포트 정보 로딩 Effect
+   * Port information loading Effect
    *
-   * 처리 과정:
-   * 1. 백엔드에서 물리적 포트 정보 조회
-   * 2. 케이블 정보와 매칭하여 논리적 연결 관계 구성
-   * 3. 연결된 장비의 상태 정보 추가
-   * 4. 통합된 포트 연결 상태 생성
+   * Processing steps:
+   * 1. Query physical port information from backend
+   * 2. Match with cable information to construct logical connection relationships
+   * 3. Add status information of connected devices
+   * 4. Generate integrated port connection status
    *
-   * 성능 고려사항:
-   * - alive 플래그로 컴포넌트 언마운트 시 상태 업데이트 방지
-   * - 에러 발생 시 빈 배열로 초기화하여 UI 안정성 확보
+   * Performance considerations:
+   * - Prevent state updates when component unmounts using alive flag
+   * - Initialize with empty array on error to ensure UI stability
    */
   useEffect(() => {
     let alive = true;
@@ -524,33 +513,31 @@ function PortConnectionStatus({
       try {
         setLoadingPorts(true);
 
-        // 1. 물리적 포트 정보 조회
+        // 1. Query physical port information
         const devicePorts = await fetchPortsByDevice(deviceId);
 
-        // 2. 장비 이름 기반 빠른 조회를 위한 Map 생성
-        const devicesByName = new Map<string, Device>(
-          devices.map((d) => [d.name, d])
-        );
+        // 2. Create Map for fast lookup based on device name
+        const devicesByName = new Map<string, Device>(devices.map((d) => [d.name, d]));
 
-        // 3. 포트-케이블-장비 정보 통합
+        // 3. Integrate port-cable-device information
         const connections = createPortConnections(
           devicePorts,
           filteredCables,
           currentName,
-          devicesByName
+          devicesByName,
         );
 
-        // 4. 컴포넌트가 아직 마운트된 상태에서만 상태 업데이트
+        // 4. Update state only if component is still mounted
         if (alive) setPortConnections(connections);
       } catch (error) {
         if (alive) setPortConnections([]);
-        console.error("포트 정보 로드 실패:", error);
+        console.error('Failed to load port information:', error);
       } finally {
         if (alive) setLoadingPorts(false);
       }
     })();
 
-    // 클린업: 컴포넌트 언마운트 시 상태 업데이트 방지
+    // Cleanup: prevent state updates when component unmounts
     return () => {
       alive = false;
     };
@@ -558,11 +545,11 @@ function PortConnectionStatus({
 
   return (
     <section>
-      <div className="text-slate-700 font-semibold mb-3">🔌 포트 연결 상태</div>
+      <div className="mb-3 font-semibold text-slate-700">🔌 Port Connection Status</div>
       {loadingPorts ? (
-        <div className="text-slate-400 text-sm">포트 정보 로딩 중...</div>
+        <div className="text-sm text-slate-400">Loading port information...</div>
       ) : (
-        <div className="bg-slate-50 rounded-md p-3 max-h-64 overflow-y-auto">
+        <div className="max-h-64 overflow-y-auto rounded-md bg-slate-50 p-3">
           <div className="grid grid-cols-1 gap-2 text-xs">
             {portConnections.map((port) => (
               <PortConnectionItem key={port.portNumber} port={port} />
@@ -575,64 +562,60 @@ function PortConnectionStatus({
 }
 
 /**
- * 개별 포트 연결 상태 표시 컴포넌트
+ * Individual port connection status display component
  *
- * 시각적 요소:
- * - 포트 번호: 고정폭 폰트로 정렬된 표시
- * - 활성화 LED: 초록(활성)/회색(비활성) 원형 표시기
- * - 연결 상태: 연결된 장비명과 타입 또는 "미연결" 표시
- * - 배경색: 연결 상태에 따른 시각적 구분
+ * Visual elements:
+ * - Port number: aligned display with fixed-width font
+ * - Activation LED: green (active)/gray (inactive) circular indicator
+ * - Connection status: connected device name and type or "Disconnected" display
+ * - Background color: visual distinction based on connection status
  */
 function PortConnectionItem({ port }: { port: PortConnection }) {
   return (
     <div
-      className={`flex justify-between items-center p-2 rounded border ${
+      className={`flex items-center justify-between rounded border p-2 ${
         port.connectedDevice
-          ? "bg-green-50 border-green-200" // 연결됨: 초록색 테마
-          : "bg-slate-100 border-slate-200" // 미연결: 회색 테마
+          ? 'border-green-200 bg-green-50' // Connected: green theme
+          : 'border-slate-200 bg-slate-100' // Disconnected: gray theme
       }`}
     >
-      {/* 왼쪽: 포트 번호 및 활성화 상태 */}
+      {/* Left: Port number and activation status */}
       <div className="flex items-center space-x-2">
         <span className="font-mono font-semibold">
-          P{port.portNumber.toString().padStart(2, "0")}
+          P{port.portNumber.toString().padStart(2, '0')}
         </span>
         <div
-          className={`w-2 h-2 rounded-full ${
-            port.isActive ? "bg-green-400" : "bg-slate-300"
-          }`}
+          className={`h-2 w-2 rounded-full ${port.isActive ? 'bg-green-400' : 'bg-slate-300'}`}
         />
       </div>
 
-      {/* 오른쪽: 연결된 장비 정보 */}
+      {/* Right: Connected device information */}
       <div className="text-right">
         {port.connectedDevice ? (
           <div>
-            <div className="font-medium text-slate-700">
-              {port.connectedDevice}
-            </div>
+            <div className="font-medium text-slate-700">{port.connectedDevice}</div>
             <div className="text-slate-500">{port.connectedDeviceType}</div>
           </div>
         ) : (
-          <span className="text-slate-400">미연결</span>
+          <span className="text-slate-400">Disconnected</span>
         )}
       </div>
     </div>
   );
 }
 
-/* ───────── 트레이스 결과 ───────── */
+/* ───────── Trace Results ───────── */
 
 /**
- * 네트워크 경로 추적 결과 표시 컴포넌트
+ * Network path tracing result display component
  *
- * 기능:
- * - 트레이스 에러 메시지 표시
- * - 로딩 상태 안내
- * - 경로 정보가 있는 경우 hop-by-hop 경로 표시
- * - 경로 정보가 없는 경우 적절한 안내 메시지
+ * Features:
+ * - Display trace error messages
+ * - Loading state guidance
+ * - Display hop-by-hop path when path information is available
+ * - Appropriate guidance message when path information is unavailable
  *
- * 표시 형식: "순번. 출발장비 (출발포트) → 도착장비 (도착포트)"
+ * Display format: "Number. SourceDevice (SourcePort) → DestinationDevice (DestinationPort)"
  */
 function TraceResultSection({
   traceResult,
@@ -643,44 +626,41 @@ function TraceResultSection({
 }) {
   return (
     <section>
-      <div className="text-slate-700 font-semibold mb-3">🛤️ Trace 결과</div>
+      <div className="mb-3 font-semibold text-slate-700">🛤️ Trace Results</div>
       {traceError ? (
-        <div className="text-red-500 text-sm">{traceError}</div>
+        <div className="text-sm text-red-500">{traceError}</div>
       ) : !traceResult ? (
-        <div className="text-slate-400 text-sm">
-          Trace 정보를 불러오는 중입니다...
-        </div>
+        <div className="text-sm text-slate-400">Loading trace information...</div>
       ) : traceResult.path?.length > 0 ? (
-        <div className="bg-slate-50 rounded-md p-3 text-[12px] font-mono space-y-1 text-slate-700">
+        <div className="space-y-1 rounded-md bg-slate-50 p-3 font-mono text-[12px] text-slate-700">
           {traceResult.path.map((trace, idx) => (
             <div key={idx}>
-              {idx + 1}. {trace.fromDevice} ({trace.fromPort}) →{" "}
-              {trace.toDevice} ({trace.toPort})
+              {idx + 1}. {trace.fromDevice} ({trace.fromPort}) → {trace.toDevice} ({trace.toPort})
             </div>
           ))}
         </div>
       ) : (
-        <div className="text-slate-400 text-sm">경로 정보가 없습니다.</div>
+        <div className="text-sm text-slate-400">No path information available.</div>
       )}
     </section>
   );
 }
 
-/* ───────── 상태/핑 컨트롤 ───────── */
+/* ───────── Status/Ping Controls ───────── */
 
 /**
- * 장비 상태 및 Ping 설정 제어 컴포넌트
+ * Device status and Ping setting control component
  *
- * 기능:
- * - 장비 상태 변경 (Online/Offline/Unstable/Unknown)
- * - Ping 활성화/비활성화 토글
- * - 변경 사항 실시간 반영 및 에러 처리
- * - 저장 중 상태 표시 및 UI 잠금
+ * Features:
+ * - Device status change (Online/Offline/Unstable/Unknown)
+ * - Ping activation/deactivation toggle
+ * - Real-time reflection of changes and error handling
+ * - Display saving state and UI lock
  *
- * 상태 동기화:
- * - 로컬 상태 즉시 업데이트 (낙관적 업데이트)
- * - 백엔드 API 호출로 영구 저장
- * - 전역 장비 목록 새로고침으로 일관성 유지
+ * Status synchronization:
+ * - Immediate local state update (optimistic update)
+ * - Permanent save through backend API call
+ * - Maintain consistency by refreshing global device list
  */
 function DeviceStatusControls({
   device,
@@ -694,21 +674,21 @@ function DeviceStatusControls({
   const [saving, setSaving] = useState(false);
 
   /**
-   * 장비 상태 변경 핸들러
+   * Device status change handler
    *
-   * 처리 순서:
-   * 1. 저장 상태 활성화 (UI 잠금)
-   * 2. 백엔드 API 호출
-   * 3. 응답 데이터로 로컬 선택 상태 업데이트
-   * 4. 전역 장비 목록 새로고침
-   * 5. 에러 처리 및 사용자 알림
+   * Processing order:
+   * 1. Activate saving state (UI lock)
+   * 2. Backend API call
+   * 3. Update local selection state with response data
+   * 4. Refresh global device list
+   * 5. Error handling and user notification
    */
   const handleStatusChange = async (newStatus: DeviceStatus) => {
     try {
       setSaving(true);
       const updated = await updateDeviceStatus(device.deviceId, newStatus);
 
-      // 로컬 선택 상태 즉시 업데이트
+      // Immediately update local selection state
       setSelectedDevice({
         ...device,
         status: updated.status,
@@ -716,7 +696,7 @@ function DeviceStatusControls({
         enablePing: updated.enablePing,
       });
 
-      // 전역 상태와 동기화
+      // Synchronize with global state
       await refetchDevices();
     } catch (err) {
       alert((err as Error).message);
@@ -726,10 +706,10 @@ function DeviceStatusControls({
   };
 
   /**
-   * Ping 활성화/비활성화 토글 핸들러
+   * Ping activation/deactivation toggle handler
    *
-   * 현재 enablePing 상태를 반전시켜서 업데이트
-   * 장비 상태는 변경하지 않고 Ping 설정만 토글
+   * Inverts current enablePing state for update
+   * Only toggles Ping setting without changing device status
    */
   const handleTogglePing = async () => {
     try {
@@ -737,10 +717,10 @@ function DeviceStatusControls({
       const updated = await updateDeviceStatus(
         device.deviceId,
         device.status as DeviceStatus,
-        !device.enablePing // 현재 상태의 반대로 설정
+        !device.enablePing, // Set to opposite of current state
       );
 
-      // Ping 설정과 마지막 확인 시간만 업데이트
+      // Update only Ping setting and last check time
       setSelectedDevice({
         ...device,
         enablePing: updated.enablePing,
@@ -757,13 +737,13 @@ function DeviceStatusControls({
 
   return (
     <section className="space-y-4">
-      <div className="text-slate-700 font-semibold">⚙️ 상태 / Ping</div>
+      <div className="font-semibold text-slate-700">⚙️ Status / Ping</div>
 
-      {/* 장비 상태 선택 드롭다운 */}
+      {/* Device status selection dropdown */}
       <div className="flex items-center gap-2">
-        <label className="text-sm w-24 text-slate-600">상태</label>
+        <label className="w-24 text-sm text-slate-600">Status</label>
         <select
-          className="flex-1 border rounded px-2 py-1 text-sm"
+          className="flex-1 rounded border px-2 py-1 text-sm"
           value={device.status}
           disabled={saving}
           onChange={(e) => handleStatusChange(e.target.value as DeviceStatus)}
@@ -775,158 +755,149 @@ function DeviceStatusControls({
         </select>
       </div>
 
-      {/* Ping 활성화 토글 버튼 */}
+      {/* Ping activation toggle button */}
       <div className="flex items-center gap-2">
-        <label className="text-sm w-24 text-slate-600">Enable Ping</label>
+        <label className="w-24 text-sm text-slate-600">Enable Ping</label>
         <button
           type="button"
           disabled={saving}
           onClick={handleTogglePing}
-          className={`px-3 py-1 rounded text-sm border transition ${
+          className={`rounded border px-3 py-1 text-sm transition ${
             device.enablePing
-              ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
-              : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+              ? 'border-green-600 bg-green-600 text-white hover:bg-green-700'
+              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
           }`}
         >
-          {device.enablePing ? "ON" : "OFF"}
+          {device.enablePing ? 'ON' : 'OFF'}
         </button>
-        {saving && (
-          <span className="ml-2 text-xs text-slate-500">저장 중…</span>
-        )}
+        {saving && <span className="ml-2 text-xs text-slate-500">Saving…</span>}
       </div>
     </section>
   );
 }
 
-/* ───────── 유틸리티 함수들 ───────── */
+/* ───────── Utility Functions ───────── */
 
 /**
- * 포트 문자열에서 숫자 추출 함수
+ * Port number extraction function from port strings
  *
- * 다양한 포트 표기법을 처리:
- * - "Gi1/0/10" → 10 (마지막 숫자)
+ * Handles various port notation formats:
+ * - "Gi1/0/10" → 10 (last number)
  * - "P05" → 5
  * - "FastEthernet0/1" → 1
- * - 24 → 24 (숫자 그대로)
+ * - 24 → 24 (number as is)
  *
- * @param label 포트 라벨 (문자열, 숫자, 또는 undefined)
- * @returns 추출된 포트 번호 (실패 시 NaN)
+ * @param label Port label (string, number, or undefined)
+ * @returns Extracted port number (NaN on failure)
  */
 function parsePortNumber(label: string | number | undefined): number {
-  if (typeof label === "number") return label;
+  if (typeof label === 'number') return label;
   if (!label) return NaN;
 
-  // 정규식: 문자열에서 마지막 연속된 숫자 그룹 찾기
+  // Regex: find last consecutive number group in string
   const m = String(label).match(/(\d+)(?!.*\d)/);
   return m ? Number(m[1]) : NaN;
 }
 
 /**
- * 포트 연결 정보 생성 함수
+ * Port connection information generation function
  *
- * 기능:
- * - 물리적 포트 정보와 논리적 케이블 연결을 통합
- * - 각 포트별 연결된 장비 정보 매핑
- * - 동적 포트 범위 계산 (최소 24포트, 실제 사용 포트까지 확장)
+ * Features:
+ * - Integrate physical port information with logical cable connections
+ * - Map connected device information for each port
+ * - Dynamic port range calculation (minimum 24 ports, expand to actual used ports)
  *
- * @param devicePorts 물리적 포트 상태 배열
- * @param cables 케이블 연결 정보 배열
- * @param currentDeviceName 현재 조회 중인 장비명
- * @param devicesByName 장비명 → 장비 객체 매핑
- * @returns 통합된 포트 연결 정보 배열
+ * @param devicePorts Physical port status array
+ * @param cables Cable connection information array
+ * @param currentDeviceName Name of currently queried device
+ * @param devicesByName Device name → device object mapping
+ * @returns Integrated port connection information array
  */
 function createPortConnections(
   devicePorts: Port[],
   cables: CableDto[],
   currentDeviceName: string,
-  devicesByName: Map<string, Device>
+  devicesByName: Map<string, Device>,
 ): PortConnection[] {
   /**
-   * 1단계: 케이블 연결 정보를 포트 기준으로 인덱싱
+   * Step 1: Index cable connection information by port basis
    *
-   * 구조: "장비명#포트번호" → 케이블 객체
-   * 예: "Switch01#5" → { fromDevice: "Switch01", toDevice: "PC01", ... }
+   * Structure: "DeviceName#PortNumber" → Cable object
+   * Example: "Switch01#5" → { fromDevice: "Switch01", toDevice: "PC01", ... }
    */
   const byEnd = new Map<string, CableDto>();
   for (const cable of cables) {
-    const fp = parsePortNumber(
-      cable.fromPort as unknown as string | number | undefined
-    );
-    const tp = parsePortNumber(
-      cable.toPort as unknown as string | number | undefined
-    );
+    const fp = parsePortNumber(cable.fromPort as unknown as string | number | undefined);
+    const tp = parsePortNumber(cable.toPort as unknown as string | number | undefined);
 
-    // 유효한 포트 번호만 매핑에 추가
+    // Add only valid port numbers to mapping
     if (!Number.isNaN(fp)) byEnd.set(`${cable.fromDevice}#${fp}`, cable);
     if (!Number.isNaN(tp)) byEnd.set(`${cable.toDevice}#${tp}`, cable);
   }
 
   /**
-   * 2단계: 동적 포트 범위 계산
+   * Step 2: Dynamic port range calculation
    *
-   * 고려 요소:
-   * - 물리적으로 존재하는 포트 중 최대 번호
-   * - 케이블로 연결된 포트 중 최대 번호
-   * - 최소 24포트 보장 (일반적인 스위치 기본 포트 수)
+   * Consideration factors:
+   * - Maximum number among physically existing ports
+   * - Maximum number among ports connected by cables
+   * - Guarantee minimum 24 ports (typical switch default port count)
    */
   const maxObserved = Math.max(
-    // 물리적 포트 중 최대 번호
+    // Maximum number among physical ports
     devicePorts.reduce((m, p) => Math.max(m, p.portNumber || 0), 0),
 
-    // 케이블 연결된 포트 중 최대 번호
+    // Maximum number among cable-connected ports
     ...cables.map((c) =>
       Math.max(
         c.fromDevice === currentDeviceName
-          ? parsePortNumber(
-              c.fromPort as unknown as string | number | undefined
-            )
+          ? parsePortNumber(c.fromPort as unknown as string | number | undefined)
           : 0,
         c.toDevice === currentDeviceName
           ? parsePortNumber(c.toPort as unknown as string | number | undefined)
-          : 0
-      )
+          : 0,
+      ),
     ),
 
-    // 최소 24포트 보장
-    24
+    // Guarantee minimum 24 ports
+    24,
   );
 
   /**
-   * 3단계: 각 포트별 연결 정보 생성
+   * Step 3: Generate connection information for each port
    *
-   * 처리 과정:
-   * 1. 포트 번호별로 물리적 상태 조회
-   * 2. 케이블 연결 정보 매칭
-   * 3. 연결된 장비의 상태/타입 정보 추가
+   * Processing steps:
+   * 1. Query physical status by port number
+   * 2. Match cable connection information
+   * 3. Add status/type information of connected devices
    */
   const connections: PortConnection[] = [];
   for (let portNum = 1; portNum <= maxObserved; portNum++) {
-    // 물리적 포트 정보 조회
+    // Query physical port information
     const port = devicePorts.find((p) => p.portNumber === portNum);
 
     const connection: PortConnection = {
       portNumber: portNum,
-      isActive: Boolean(port?.isActive), // undefined/null을 false로 변환
+      isActive: Boolean(port?.isActive), // Convert undefined/null to false
     };
 
-    // 케이블 연결 정보 매칭
+    // Match cable connection information
     const hit = byEnd.get(`${currentDeviceName}#${portNum}`);
     if (hit) {
-      // 현재 장비가 From인지 To인지 판단
+      // Determine if current device is From or To
       const isFrom = hit.fromDevice === currentDeviceName;
       connection.connectedDevice = isFrom ? hit.toDevice : hit.fromDevice;
 
-      // 케이블 ID 추출 (타입 안전성 확보)
+      // Extract cable ID (ensure type safety)
       const id = (hit as { cableId?: string | number }).cableId;
-      connection.cableId =
-        typeof id === "string" || typeof id === "number" ? id : undefined;
+      connection.cableId = typeof id === 'string' || typeof id === 'number' ? id : undefined;
 
-      // 연결된 장비의 상태 및 타입 정보 추가
+      // Add status and type information of connected device
       const target = connection.connectedDevice
         ? devicesByName.get(connection.connectedDevice)
         : undefined;
-      connection.connectedDeviceStatus = target?.status ?? "Unknown";
-      connection.connectedDeviceType = target?.type ?? "Unknown";
+      connection.connectedDeviceStatus = target?.status ?? 'Unknown';
+      connection.connectedDeviceType = target?.type ?? 'Unknown';
     }
 
     connections.push(connection);
@@ -936,17 +907,17 @@ function createPortConnections(
 }
 
 /**
- * 정보 항목 표시 컴포넌트
+ * Information item display component
  *
- * 라벨-값 쌍을 일관된 형태로 표시하는 재사용 가능한 컴포넌트
- * 장비 정보, 케이블 정보 등에서 공통으로 사용
+ * Reusable component that displays label-value pairs in a consistent format
+ * Used commonly in device information, cable information, etc.
  *
- * @param label 항목 라벨 (예: "IP 주소", "장비 유형")
- * @param value 항목 값 (문자열, 숫자, JSX 요소 등)
+ * @param label Item label (e.g., "IP Address", "Device Type")
+ * @param value Item value (string, number, JSX element, etc.)
  */
 function InfoItem({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex justify-between items-center py-2 border-b border-slate-100">
+    <div className="flex items-center justify-between border-b border-slate-100 py-2">
       <span className="text-slate-500">{label}</span>
       <span className="font-medium text-slate-700">{value}</span>
     </div>

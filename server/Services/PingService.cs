@@ -7,8 +7,8 @@ using TraceNet.DTOs;
 namespace TraceNet.Services
 {
     /// <summary>
-    /// 네트워크 Ping 기능을 제공하는 서비스 클래스
-    /// System.Net.NetworkInformation.Ping을 활용한 ICMP 패킷 전송
+    /// Service that provides network Ping functionality
+    /// using System.Net.NetworkInformation.Ping to send ICMP packets.
     /// </summary>
     public class PingService
     {
@@ -20,14 +20,14 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 단일 IP 주소에 대한 Ping 실행
+        /// Execute a ping against a single IP address.
         /// </summary>
-        /// <param name="ipAddress">대상 IP 주소</param>
-        /// <param name="timeoutMs">타임아웃 (밀리초)</param>
+        /// <param name="ipAddress">Target IP address</param>
+        /// <param name="timeoutMs">Timeout in milliseconds</param>
         /// <returns>PingResultDto</returns>
         public async Task<PingResultDto> PingAsync(string ipAddress, int timeoutMs = 2000)
         {
-            _logger.LogInformation("Ping 시작: IP={IpAddress}, Timeout={Timeout}ms", ipAddress, timeoutMs);
+            _logger.LogInformation("Ping started: IP={IpAddress}, Timeout={Timeout}ms", ipAddress, timeoutMs);
 
             var result = new PingResultDto
             {
@@ -37,12 +37,12 @@ namespace TraceNet.Services
 
             try
             {
-                // IP 주소 유효성 검사
+                // Validate IP address format
                 if (!IPAddress.TryParse(ipAddress, out var parsedIp))
                 {
                     result.Status = "Unknown";
-                    result.ErrorMessage = "유효하지 않은 IP 주소 형식";
-                    _logger.LogWarning("잘못된 IP 주소: {IpAddress}", ipAddress);
+                    result.ErrorMessage = "Invalid IP address format";
+                    _logger.LogWarning("Invalid IP address: {IpAddress}", ipAddress);
                     return result;
                 }
 
@@ -54,66 +54,66 @@ namespace TraceNet.Services
                 switch (reply.Status)
                 {
                     case IPStatus.Success:
-                        // 레이턴시 기준으로 상태 결정
+                        // Determine status based on latency
                         result.Status = reply.RoundtripTime switch
                         {
                             < 100 => "Online",
-                            < 500 => "Unstable", 
+                            < 500 => "Unstable",
                             _ => "Unstable"
                         };
-                        _logger.LogInformation("Ping 성공: {IpAddress} - {Latency}ms", ipAddress, reply.RoundtripTime);
+                        _logger.LogInformation("Ping succeeded: {IpAddress} - {Latency}ms", ipAddress, reply.RoundtripTime);
                         break;
 
                     case IPStatus.TimedOut:
                         result.Status = "Offline";
-                        result.ErrorMessage = "요청 시간 초과";
-                        _logger.LogWarning("Ping 타임아웃: {IpAddress}", ipAddress);
+                        result.ErrorMessage = "Request timed out";
+                        _logger.LogWarning("Ping timed out: {IpAddress}", ipAddress);
                         break;
 
                     case IPStatus.DestinationHostUnreachable:
                     case IPStatus.DestinationNetworkUnreachable:
                         result.Status = "Unreachable";
-                        result.ErrorMessage = $"호스트에 도달할 수 없음: {reply.Status}";
-                        _logger.LogWarning("Ping 도달 불가: {IpAddress} - {Status}", ipAddress, reply.Status);
+                        result.ErrorMessage = $"Host unreachable: {reply.Status}";
+                        _logger.LogWarning("Ping unreachable: {IpAddress} - {Status}", ipAddress, reply.Status);
                         break;
 
                     default:
                         result.Status = "Offline";
-                        result.ErrorMessage = $"Ping 실패: {reply.Status}";
-                        _logger.LogWarning("Ping 실패: {IpAddress} - {Status}", ipAddress, reply.Status);
+                        result.ErrorMessage = $"Ping failed: {reply.Status}";
+                        _logger.LogWarning("Ping failed: {IpAddress} - {Status}", ipAddress, reply.Status);
                         break;
                 }
             }
             catch (PingException ex)
             {
                 result.Status = "Unknown";
-                result.ErrorMessage = $"Ping 오류: {ex.Message}";
-                _logger.LogError(ex, "Ping 예외 발생: {IpAddress}", ipAddress);
+                result.ErrorMessage = $"Ping error: {ex.Message}";
+                _logger.LogError(ex, "Ping exception: {IpAddress}", ipAddress);
             }
             catch (Exception ex)
             {
                 result.Status = "Unknown";
-                result.ErrorMessage = $"예상치 못한 오류: {ex.Message}";
-                _logger.LogError(ex, "Ping 중 예상치 못한 오류: {IpAddress}", ipAddress);
+                result.ErrorMessage = $"Unexpected error: {ex.Message}";
+                _logger.LogError(ex, "Unexpected error during ping: {IpAddress}", ipAddress);
             }
 
             return result;
         }
 
         /// <summary>
-        /// 여러 IP 주소에 대한 병렬 Ping 실행
+        /// Execute ping in parallel for multiple IP addresses.
         /// </summary>
-        /// <param name="ipAddresses">대상 IP 주소 목록</param>
-        /// <param name="timeoutMs">타임아웃 (밀리초)</param>
-        /// <param name="maxConcurrency">최대 동시 실행 수</param>
-        /// <returns>PingResultDto 목록</returns>
+        /// <param name="ipAddresses">List of target IP addresses</param>
+        /// <param name="timeoutMs">Timeout in milliseconds</param>
+        /// <param name="maxConcurrency">Maximum degree of parallelism</param>
+        /// <returns>List of PingResultDto</returns>
         public async Task<List<PingResultDto>> PingMultipleAsync(
-            IEnumerable<string> ipAddresses, 
-            int timeoutMs = 2000, 
+            IEnumerable<string> ipAddresses,
+            int timeoutMs = 2000,
             int maxConcurrency = 10)
         {
             var ipList = ipAddresses.ToList();
-            _logger.LogInformation("다중 Ping 시작: 대상 수={Count}, 동시실행={Concurrency}", 
+            _logger.LogInformation("Bulk ping started: targets={Count}, concurrency={Concurrency}",
                 ipList.Count, maxConcurrency);
 
             var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
@@ -131,28 +131,28 @@ namespace TraceNet.Services
             });
 
             var results = await Task.WhenAll(tasks);
-            
-            _logger.LogInformation("다중 Ping 완료: 총 {Total}개, 온라인 {Online}개", 
+
+            _logger.LogInformation("Bulk ping completed: total={Total}, online={Online}",
                 results.Length, results.Count(r => r.Status == "Online"));
 
             return results.ToList();
         }
 
         /// <summary>
-        /// 연속적인 Ping 실행 (지정된 횟수만큼 반복)
+        /// Execute consecutive pings (repeat a specified number of times).
         /// </summary>
-        /// <param name="ipAddress">대상 IP 주소</param>
-        /// <param name="count">Ping 횟수</param>
-        /// <param name="intervalMs">간격 (밀리초)</param>
-        /// <param name="timeoutMs">타임아웃 (밀리초)</param>
-        /// <returns>PingResultDto 목록</returns>
+        /// <param name="ipAddress">Target IP address</param>
+        /// <param name="count">Number of pings</param>
+        /// <param name="intervalMs">Interval between pings in milliseconds</param>
+        /// <param name="timeoutMs">Timeout in milliseconds</param>
+        /// <returns>List of PingResultDto</returns>
         public async Task<List<PingResultDto>> PingContinuousAsync(
-            string ipAddress, 
-            int count = 4, 
-            int intervalMs = 1000, 
+            string ipAddress,
+            int count = 4,
+            int intervalMs = 1000,
             int timeoutMs = 2000)
         {
-            _logger.LogInformation("연속 Ping 시작: {IpAddress}, 횟수={Count}, 간격={Interval}ms", 
+            _logger.LogInformation("Continuous ping started: {IpAddress}, count={Count}, interval={Interval}ms",
                 ipAddress, count, intervalMs);
 
             var results = new List<PingResultDto>();
@@ -165,7 +165,7 @@ namespace TraceNet.Services
                 var result = await PingAsync(ipAddress, timeoutMs);
                 results.Add(result);
 
-                _logger.LogDebug("연속 Ping {Current}/{Total}: {Status} - {Latency}ms", 
+                _logger.LogDebug("Continuous ping {Current}/{Total}: {Status} - {Latency}ms",
                     i + 1, count, result.Status, result.LatencyMs);
             }
 

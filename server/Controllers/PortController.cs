@@ -16,7 +16,7 @@ namespace TraceNet.Controllers
         }
 
         /// <summary>
-        /// 특정 Device에 연결된 모든 포트 조회
+        /// Retrieve all ports connected to a specific device
         /// GET: /api/port?deviceId=3
         /// </summary>
         [HttpGet]
@@ -31,13 +31,13 @@ namespace TraceNet.Controllers
         }
 
         /// <summary>
-        /// 전체 포트 목록 조회 (장비 포함)
+        /// Retrieve all ports (including associated devices)
         /// GET: /api/ports
         /// </summary>
         [HttpGet("/api/ports")]
         public async Task<ActionResult<IEnumerable<Port>>> GetAllPorts()
         {
-            var ports = await _portService.GetAllWithDeviceAsync(); // ✅ 장비 포함
+            var ports = await _portService.GetAllWithDeviceAsync(); // ✅ Includes devices
             return Ok(ports);
         }
     }

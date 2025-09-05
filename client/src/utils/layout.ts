@@ -1,8 +1,8 @@
 //  client/src/utils/layout.ts
 
-import { Position } from "react-flow-renderer";
-import type { Node, Edge } from "react-flow-renderer";
-import dagre from "dagre";
+import dagre from 'dagre';
+import type { Edge, Node } from 'react-flow-renderer';
+import { Position } from 'react-flow-renderer';
 
 /**
  * TraceNet Layout Engine
@@ -33,9 +33,9 @@ import dagre from "dagre";
  * NewRadial: 스위치 클러스터형 방사형 (권장, 현재 메인 사용)
  */
 export enum LayoutMode {
-  Dagre = "dagre",
-  Radial = "radial",
-  NewRadial = "new-radial", // 메인 레이아웃
+  Dagre = 'dagre',
+  Radial = 'radial',
+  NewRadial = 'new-radial', // 메인 레이아웃
 }
 
 // ==========================================
@@ -182,7 +182,7 @@ export function getDagreLayoutedElements(nodes: Node[], edges: Edge[]) {
 
   // 레이아웃 파라미터 설정
   dagreGraph.setGraph({
-    rankdir: "LR", // 좌→우 방향 배치
+    rankdir: 'LR', // 좌→우 방향 배치
     nodesep: 80, // 동일 레벨 노드 간격
     ranksep: 100, // 계층 간 거리
   });
@@ -216,7 +216,7 @@ export function getDagreLayoutedElements(nodes: Node[], edges: Edge[]) {
       },
       sourcePosition: Position.Right, // 출력: 우측
       targetPosition: Position.Left, // 입력: 좌측
-      data: { ...node.data, mode: "dagre" },
+      data: { ...node.data, mode: 'dagre' },
     };
   });
 
@@ -251,7 +251,7 @@ export function getDagreLayoutedElements(nodes: Node[], edges: Edge[]) {
  */
 export function getNewRadialLayoutedElements(
   inputNodes: Node[],
-  inputEdges: Edge[]
+  inputEdges: Edge[],
 ): { nodes: Node[]; edges: Edge[] } {
   // ============ 기본 설정 ============
   const center = { x: 800, y: 500 }; // 캔버스 중심점
@@ -259,13 +259,13 @@ export function getNewRadialLayoutedElements(
   const NODE_HEIGHT = 60; // 노드 표준 높이
 
   // ============ 노드 타입별 분류 ============
-  const server = inputNodes.find((n) => n.data?.type === "server");
-  const switches = inputNodes.filter((n) => n.data?.type === "switch");
-  const pcs = inputNodes.filter((n) => n.data?.type === "pc");
+  const server = inputNodes.find((n) => n.data?.type === 'server');
+  const switches = inputNodes.filter((n) => n.data?.type === 'switch');
+  const pcs = inputNodes.filter((n) => n.data?.type === 'pc');
 
   // 서버가 없으면 원본 그대로 반환
   if (!server) {
-    console.warn("서버 노드가 없어 방사형 레이아웃을 적용할 수 없습니다.");
+    console.warn('서버 노드가 없어 방사형 레이아웃을 적용할 수 없습니다.');
     return { nodes: inputNodes, edges: inputEdges };
   }
 
@@ -283,7 +283,7 @@ export function getNewRadialLayoutedElements(
     targetPosition: Position.Top, // 상향 입력
     data: {
       ...server.data,
-      mode: "radial",
+      mode: 'radial',
       angleInDegrees: 0, // 중심점이므로 각도 0
       centerAligned: true, // 중심 배치 플래그
     },
@@ -324,7 +324,7 @@ export function getNewRadialLayoutedElements(
       targetPosition: handlePositions.target, // 최적화된 입력 Handle
       data: {
         ...sw.data,
-        mode: "radial",
+        mode: 'radial',
         angle: angle, // 라디안 각도 (계산용)
         angleInDegrees: angleInDegrees, // 도 단위 각도 (디버깅용)
       },
@@ -342,11 +342,7 @@ export function getNewRadialLayoutedElements(
         // 연결 확인 (source ↔ target)
         const isSourceSwitch = e.source === sw.id;
         const isTargetSwitch = e.target === sw.id;
-        const connectedId = isSourceSwitch
-          ? e.target
-          : isTargetSwitch
-          ? e.source
-          : null;
+        const connectedId = isSourceSwitch ? e.target : isTargetSwitch ? e.source : null;
 
         if (!connectedId) return false;
 
@@ -397,7 +393,7 @@ export function getNewRadialLayoutedElements(
         targetPosition: handlePositions.target,
         data: {
           ...pc.data,
-          mode: "radial",
+          mode: 'radial',
           angle: angle,
           angleInDegrees: pcAngleInDegrees,
         },
@@ -413,19 +409,17 @@ export function getNewRadialLayoutedElements(
   // 위치가 계산되지 않은 노드들을 기본 위치에 배치
   inputNodes.forEach((node) => {
     if (!positionedNodesMap.has(node.id)) {
-      console.warn(
-        `연결되지 않은 노드 발견: ${node.id} (${node.data?.label}) - 기본 위치에 배치`
-      );
+      console.warn(`연결되지 않은 노드 발견: ${node.id} (${node.data?.label}) - 기본 위치에 배치`);
 
       // 타입별 기본 위치 설정
       let defaultX = 100;
       let defaultY = 100;
 
-      if (node.data?.type === "pc") {
+      if (node.data?.type === 'pc') {
         // PC: 좌측 상단에 세로로 배치
         defaultX = 100;
         defaultY = 100 + (positionedNodesMap.size % 5) * 80;
-      } else if (node.data?.type === "switch") {
+      } else if (node.data?.type === 'switch') {
         // 스위치: 우측 중앙에 배치
         defaultX = center.x + 600;
         defaultY = center.y;
@@ -438,7 +432,7 @@ export function getNewRadialLayoutedElements(
         targetPosition: Position.Top,
         data: {
           ...node.data,
-          mode: "radial",
+          mode: 'radial',
           angleInDegrees: 0,
         },
       });
@@ -451,8 +445,8 @@ export function getNewRadialLayoutedElements(
   const finalNodes = Array.from(positionedNodesMap.values()).filter((n) => {
     const valid =
       n.position &&
-      typeof n.position.x === "number" &&
-      typeof n.position.y === "number" &&
+      typeof n.position.x === 'number' &&
+      typeof n.position.y === 'number' &&
       !Number.isNaN(n.position.x) &&
       !Number.isNaN(n.position.y) &&
       Number.isFinite(n.position.x) &&
@@ -468,10 +462,10 @@ export function getNewRadialLayoutedElements(
   // 엣지에 커스텀 렌더러 및 메타데이터 추가
   const finalEdges = inputEdges.map((e) => ({
     ...e,
-    type: "custom", // 커스텀 엣지 렌더러 사용
+    type: 'custom', // 커스텀 엣지 렌더러 사용
     data: {
       ...e.data,
-      mode: "radial", // 레이아웃 모드 정보
+      mode: 'radial', // 레이아웃 모드 정보
     },
   }));
 

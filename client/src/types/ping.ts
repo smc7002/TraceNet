@@ -1,35 +1,35 @@
-// 📁 src/types/ping.ts
+// src/types/ping.ts
 
 /**
- * 단일 장비 Ping 결과
+ * Ping result for a single device
  */
 export interface PingResultDto {
   deviceId: number;
   deviceName: string;
   ipAddress: string;
-  status: "Online" | "Offline" | "Unstable" | "Unknown" | "Unreachable";
+  status: 'Online' | 'Offline' | 'Unstable' | 'Unknown' | 'Unreachable';
   latencyMs: number | null;
   checkedAt: string; // ISO DateTime
   errorMessage: string | null;
 }
 
 /**
- * 여러 장비 일괄 Ping 요청
+ * Batch ping request for multiple devices
  */
 export interface MultiPingRequestDto {
   deviceIds: number[];
-  timeoutMs?: number;      // 기본값: 2000ms
-  maxConcurrency?: number; // 기본값: 10
-  updateDatabase?: boolean; // 기본값: true
+  timeoutMs?: number;       // default: 2000ms
+  maxConcurrency?: number;  // default: 10
+  updateDatabase?: boolean; // default: true
 }
 
 /**
- * TracePath Ping 결과 (TraceDto 임포트 필요)
+ * TracePath ping result (import Trace DTO if needed)
  */
 export interface TracePingResultDto {
   success: boolean;
   errorMessage: string | null;
-  tracePath: unknown; // TraceResultDto - 필요시 trace.ts에서 임포트
+  tracePath: unknown; // TraceResultDto — import from trace.ts if needed
   pingResults: PingResultDto[];
   totalDevices: number;
   onlineDevices: number;
@@ -39,7 +39,7 @@ export interface TracePingResultDto {
 }
 
 /**
- * Ping 진행 상태
+ * Ping progress state
  */
 export interface PingProgress {
   isRunning: boolean;

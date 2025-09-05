@@ -1,21 +1,21 @@
 // src/hooks/useMainPageModel.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchDevices, updateDeviceStatusBulk } from "../api/deviceApi";
-import { fetchCables } from "../api/cableApi";
-import { pingAllDevices } from "../api/pingApi";
-import type { Device } from "../types/device";
-import type { TraceResponse } from "../types/trace";
-import type { CableDto } from "../types/cable";
-import { DeviceStatus } from "../types/status";
-import { CABLE_EDGE_PREFIX } from "../utils/edgeMapper";
-import { LayoutMode } from "../utils/layout";
-import type { Node, Edge } from "react-flow-renderer";
-import { useFps } from "../hooks/useFps";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Edge, Node } from 'react-flow-renderer';
 
-// ⬇️ 새로 분리한 훅들
-import { useSearchTrace } from "./useSearchTrace";
-import { useTopologyView } from "./useTopologyView";
+import { fetchCables } from '../api/cableApi';
+import { fetchDevices, updateDeviceStatusBulk } from '../api/deviceApi';
+import { pingAllDevices } from '../api/pingApi';
+import { useFps } from '../hooks/useFps';
+import type { CableDto } from '../types/cable';
+import type { Device } from '../types/device';
+import { DeviceStatus } from '../types/status';
+import type { TraceResponse } from '../types/trace';
+import { CABLE_EDGE_PREFIX } from '../utils/edgeMapper';
+import { LayoutMode } from '../utils/layout';
+// ⬇️ Newly separated hooks
+import { useSearchTrace } from './useSearchTrace';
+import { useTopologyView } from './useTopologyView';
 
 type ViewportInfo = {
   x: number;
@@ -57,7 +57,7 @@ interface AppState {
   // misc
   renderKey: number;
 
-  // (호환용) 레이아웃된 노드 캐시
+  // (compat) cache for layouted nodes
   layoutedNodes: Node[];
 }
 
@@ -71,7 +71,7 @@ const initialState: AppState = {
   traceEdges: [],
   traceError: null,
   traceFilterNodes: null,
-  searchQuery: "",
+  searchQuery: '',
   searchError: undefined,
 
   layoutMode: LayoutMode.Radial,
@@ -81,7 +81,7 @@ const initialState: AppState = {
   viewport: null,
 
   loading: true,
-  error: "",
+  error: '',
   isPinging: false,
   pingError: null,
 
@@ -92,31 +92,28 @@ const initialState: AppState = {
 export function useMainPageModel() {
   const [state, setState] = useState<AppState>(initialState);
 
-  const updateState = useCallback(
-    <K extends keyof AppState>(key: K, value: AppState[K]) => {
-      setState((prev) => ({ ...prev, [key]: value }));
-    },
-    []
-  );
+  const updateState = useCallback(<K extends keyof AppState>(key: K, value: AppState[K]) => {
+    setState((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const updateMultipleStates = useCallback((updates: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...updates }));
   }, []);
 
-  // DEV/localhost에서만 FPS 오버레이
+  // Show FPS overlay only in DEV/localhost
   const showDebug =
-    typeof window !== "undefined" &&
-    (import.meta.env.DEV || window.location.hostname === "localhost");
+    typeof window !== 'undefined' &&
+    (import.meta.env.DEV || window.location.hostname === 'localhost');
   const fps = useFps({ sampleMs: 500, smooth: 0.25, enabled: showDebug });
 
-  // ────────────────── 분리된 훅 연결 ──────────────────
-  // 검색/트레이스 파이프라인
+  // ────────────────── Wire separated hooks ──────────────────
+  // Search/trace pipeline
   const { executeDeviceSearch, runTraceForDevice, clearTrace } = useSearchTrace(
     () => state.devices,
-    (patch) => updateMultipleStates(patch)
+    (patch) => updateMultipleStates(patch),
   );
 
-  // 토폴로지 가시성/레이아웃 계산
+  // Topology visibility/layout computation
   const { finalNodes, finalEdges } = useTopologyView({
     devices: state.devices,
     cables: state.cables,
@@ -125,64 +122,55 @@ export function useMainPageModel() {
     currentZoomLevel: state.currentZoomLevel,
     traceEdges: state.traceEdges,
     traceFilterNodes: state.traceFilterNodes,
-    selectedDeviceId: state.selectedDevice
-      ? String(state.selectedDevice.deviceId)
-      : null,
+    selectedDeviceId: state.selectedDevice ? String(state.selectedDevice.deviceId) : null,
     viewport: state.viewport
       ? { centerX: state.viewport.centerX, centerY: state.viewport.centerY }
       : null,
   });
 
-  // ────────────────── 파생 데이터 ──────────────────
+  // ────────────────── Derived data ──────────────────
   const deviceStatusCounts = useMemo(
     () => ({
-      [DeviceStatus.Online]: state.devices.filter(
-        (d) => d.status === DeviceStatus.Online
-      ).length,
-      [DeviceStatus.Offline]: state.devices.filter(
-        (d) => d.status === DeviceStatus.Offline
-      ).length,
-      [DeviceStatus.Unstable]: state.devices.filter(
-        (d) => d.status === DeviceStatus.Unstable
-      ).length,
+      [DeviceStatus.Online]: state.devices.filter((d) => d.status === DeviceStatus.Online).length,
+      [DeviceStatus.Offline]: state.devices.filter((d) => d.status === DeviceStatus.Offline).length,
+      [DeviceStatus.Unstable]: state.devices.filter((d) => d.status === DeviceStatus.Unstable)
+        .length,
     }),
-    [state.devices]
+    [state.devices],
   );
 
   const problemCount = useMemo(
     () => state.devices.filter((d) => d.status !== DeviceStatus.Online).length,
-    [state.devices]
+    [state.devices],
   );
 
   const filteredCables = useMemo(() => {
     const q = state.searchQuery.toLowerCase();
     return state.cables.filter((c) => {
       const id = String(c.cableId).toLowerCase();
-      const desc = c.description?.toLowerCase() ?? "";
+      const desc = c.description?.toLowerCase() ?? '';
       const from = c.fromDevice.toLowerCase();
       const to = c.toDevice.toLowerCase();
-      return (
-        id.includes(q) || desc.includes(q) || from.includes(q) || to.includes(q)
-      );
+      return id.includes(q) || desc.includes(q) || from.includes(q) || to.includes(q);
     });
   }, [state.cables, state.searchQuery]);
 
-  // ────────────────── 핸들러 ──────────────────
+  // ────────────────── Handlers ──────────────────
   const handleZoomChange = useCallback(
     (zoomLevel: number) => {
-      updateState("currentZoomLevel", zoomLevel);
-      if (window.location.hostname === "localhost") {
+      updateState('currentZoomLevel', zoomLevel);
+      if (window.location.hostname === 'localhost') {
         console.log(`[ZOOM] ${zoomLevel.toFixed(2)} hidePC=${zoomLevel < 0.7}`);
       }
     },
-    [updateState]
+    [updateState],
   );
 
   const handleViewportChange = useCallback(
     (vp: ViewportInfo) => {
       updateMultipleStates({ viewport: vp, currentZoomLevel: vp.zoom });
     },
-    [updateMultipleStates]
+    [updateMultipleStates],
   );
 
   const handleSearchSubmit = useCallback(async () => {
@@ -191,7 +179,7 @@ export function useMainPageModel() {
 
   const handleDeviceClick = useCallback(
     async (device: Device) => {
-      updateState("selectedDevice", device);
+      updateState('selectedDevice', device);
       updateMultipleStates({
         selectedCable: null,
         traceResult: null,
@@ -199,7 +187,7 @@ export function useMainPageModel() {
       });
       await runTraceForDevice(device);
     },
-    [runTraceForDevice, updateMultipleStates, updateState]
+    [runTraceForDevice, updateMultipleStates, updateState],
   );
 
   const handleEdgeClick = useCallback(
@@ -215,7 +203,7 @@ export function useMainPageModel() {
       });
       clearTrace();
     },
-    [state.cables, updateMultipleStates, clearTrace]
+    [state.cables, updateMultipleStates, clearTrace],
   );
 
   const handlePingAll = useCallback(async () => {
@@ -224,13 +212,13 @@ export function useMainPageModel() {
     const onList = state.devices.filter((d) => d.enablePing !== false);
     if (onList.length === 0) {
       alert(
-        "모든 장비에서 Ping이 비활성화되어 실행할 수 없습니다.\n사이드패널의 Enable Ping을 켜거나 [전체 상태] 메뉴에서 '모두 Online + Ping ON'을 사용하세요."
+        "Ping is disabled on all devices. Cannot execute.\nTurn on 'Enable Ping' in the side panel, or use 'All Online + Ping ON' from the [Change Status] menu.",
       );
       return;
     }
     if (offList.length > 0) {
       const ok = confirm(
-        `Ping OFF 장비 ${offList.length}대를 건너뛰고 나머지 ${onList.length}대만 Ping할까요?`
+        `Skip ${offList.length} devices with Ping OFF and ping only the remaining ${onList.length} devices?`,
       );
       if (!ok) return;
     }
@@ -247,22 +235,19 @@ export function useMainPageModel() {
             }
           : device;
       });
-      updateState("devices", updated);
-      // (호환) 선택 상태 유지 위해 layoutedNodes도 갱신
+      updateState('devices', updated);
+      // (compat) also update layoutedNodes to keep selection state
       updateState(
-        "layoutedNodes",
+        'layoutedNodes',
         finalNodes.map((n) => ({
           ...n,
           selected: state.selectedDevice?.deviceId.toString() === n.id,
-        }))
+        })),
       );
     } catch (err) {
-      updateState(
-        "pingError",
-        err instanceof Error ? err.message : "전체 Ping 중 오류가 발생했습니다."
-      );
+      updateState('pingError', err instanceof Error ? err.message : 'An error occurred during full ping.');
     } finally {
-      updateState("isPinging", false);
+      updateState('isPinging', false);
     }
   }, [
     state.isPinging,
@@ -277,14 +262,11 @@ export function useMainPageModel() {
     async (status: DeviceStatus, enablePing?: boolean) => {
       const ids = state.devices.map((d) => d.deviceId);
       if (ids.length === 0) {
-        alert("변경할 장비가 없습니다.");
+        alert('There are no devices to update.');
         return;
       }
-      const human =
-        `${status}` +
-        (enablePing !== undefined ? `, Ping ${enablePing ? "ON" : "OFF"}` : "");
-      if (!confirm(`전체 ${ids.length}대 장비를 "${human}" 으로 변경할까요?`))
-        return;
+      const human = `${status}` + (enablePing !== undefined ? `, Ping ${enablePing ? 'ON' : 'OFF'}` : '');
+      if (!confirm(`Change all ${ids.length} devices to "${human}"?`)) return;
 
       updateMultipleStates({ isPinging: true, pingError: null });
       try {
@@ -297,30 +279,27 @@ export function useMainPageModel() {
           lastCheckedAt: now,
           latencyMs: null,
         }));
-        updateState("devices", newDevices);
+        updateState('devices', newDevices);
       } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : "일괄 상태 변경 중 오류가 발생했습니다.";
+        const message = err instanceof Error ? err.message : 'An error occurred during bulk status update.';
         alert(message);
-        updateState("pingError", message);
+        updateState('pingError', message);
       } finally {
-        updateState("isPinging", false);
+        updateState('isPinging', false);
       }
     },
-    [state.devices, updateMultipleStates, updateState]
+    [state.devices, updateMultipleStates, updateState],
   );
 
   const handleRefresh = useCallback(() => {
-    updateState("pingError", null);
+    updateState('pingError', null);
     window.location.reload();
   }, [updateState]);
 
   const resetAllSelections = useCallback(() => {
     updateMultipleStates({ selectedDevice: null, selectedCable: null });
     clearTrace();
-    // (호환) 기존 selection flag 초기화
+    // (compat) reset legacy selection flag
     setState((prev) => ({
       ...prev,
       layoutedNodes: prev.layoutedNodes.map((n) => ({ ...n, selected: false })),
@@ -328,28 +307,25 @@ export function useMainPageModel() {
   }, [clearTrace, updateMultipleStates]);
 
   // ────────────────── Effects ──────────────────
-  // 초기 데이터 로드
+  // Initial data load
   useEffect(() => {
     let isMounted = true;
 
-    //alert("useMainPageModel useEffect 실행됨!");
-    //console.error("🚨🚨🚨 useMainPageModel 실행 확인용");
+    // alert("useMainPageModel useEffect triggered!");
+    // console.error("🚨🚨🚨 useMainPageModel run-check");
 
     (async () => {
       try {
-        console.log("🔄 데이터 로딩 시작...");
-        const [deviceData, cableData] = await Promise.all([
-          fetchDevices(),
-          fetchCables(),
-        ]);
+        console.log('🔄 Starting data load...');
+        const [deviceData, cableData] = await Promise.all([fetchDevices(), fetchCables()]);
 
-        console.log("📊 받아온 devices:", deviceData);
-        console.log("📊 devices 개수:", deviceData?.length);
-        console.log("📊 받아온 cables:", cableData);
-        console.log("📊 cables 개수:", cableData?.length);
+        console.log('📊 devices received:', deviceData);
+        console.log('📊 device count:', deviceData?.length);
+        console.log('📊 cables received:', cableData);
+        console.log('📊 cable count:', cableData?.length);
 
         if (isMounted) {
-          console.log("✅ state에 데이터 저장 완료");
+          console.log('✅ Saved data into state');
           updateMultipleStates({
             devices: deviceData,
             cables: cableData,
@@ -357,9 +333,8 @@ export function useMainPageModel() {
           });
         }
       } catch (err) {
-        console.error("❌ 데이터 로딩 에러:", err);
-        const message =
-          err instanceof Error ? err.message : "알 수 없는 오류입니다.";
+        console.error('❌ Data load error:', err);
+        const message = err instanceof Error ? err.message : 'Unknown error.';
         if (isMounted) updateMultipleStates({ error: message, loading: false });
       }
     })();
@@ -368,9 +343,9 @@ export function useMainPageModel() {
     };
   }, [updateMultipleStates]);
 
-  // (호환) 외부에서 기대할 수 있는 layoutedNodes 갱신
+  // (compat) keep layoutedNodes updated for external consumers
   useEffect(() => {
-    updateState("layoutedNodes", finalNodes as Node[]);
+    updateState('layoutedNodes', finalNodes as Node[]);
   }, [finalNodes, updateState]);
 
   return {
@@ -401,7 +376,7 @@ export function useMainPageModel() {
     handleViewportChange,
 
     // refetch
-    refetchDevices: async () => updateState("devices", await fetchDevices()),
-    refetchCables: async () => updateState("cables", await fetchCables()),
+    refetchDevices: async () => updateState('devices', await fetchDevices()),
+    refetchCables: async () => updateState('cables', await fetchCables()),
   };
 }

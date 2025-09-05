@@ -1,10 +1,10 @@
-// 📁 src/types/keyboard.ts
+// src/types/keyboard.ts
 
 export interface KeyboardNavigationConfig {
-  stepSize?: number;           // 한 번에 이동할 픽셀 거리 (기본: 100)
-  enabled?: boolean;           // 키보드 네비게이션 활성화 여부 (기본: true)
-  zoomStep?: number;           // 줌 배율 (기본: 1.2)
-  animationDuration?: number;  // 애니메이션 지속시간 ms (기본: 300)
+  stepSize?: number;        // pixel distance per move (default: 100)
+  enabled?: boolean;        // enable/disable keyboard navigation (default: true)
+  zoomStep?: number;        // zoom multiplier per step (default: 1.2)
+  animationDuration?: number; // viewport animation duration in ms (default: 300)
 }
 
 export interface KeyboardControls {

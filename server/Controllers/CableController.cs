@@ -7,8 +7,9 @@ using AutoMapper;
 namespace TraceNet.Controllers
 {
     /// <summary>
-    /// 케이블 관리 API 컨트롤러
-    /// 네트워크 케이블과 포트 간의 연결 관계를 생성, 조회, 삭제하는 REST API 제공
+    /// Cable Management API Controller
+    /// Provides REST APIs to create, retrieve, and delete relationships 
+    /// between network cables and ports
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
@@ -24,7 +25,7 @@ namespace TraceNet.Controllers
         }
 
         /// <summary>
-        /// 모든 케이블 정보 조회 (연결 포함)
+        /// Retrieve all cable information (including connections)
         /// </summary>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<CableDto>>> GetAllCables()
@@ -35,20 +36,20 @@ namespace TraceNet.Controllers
         }
 
         /// <summary>
-        /// 새 케이블 + 연결 생성
+        /// Create a new cable and connection
         /// </summary>
         [HttpPost]
         public async Task<ActionResult<CableDto>> CreateCable(CreateCableDto dto)
         {
-            // 기본 검증
+            // Basic validation
             if (dto == null)
-                return BadRequest("케이블 정보가 필요합니다.");
+                return BadRequest("Cable information is required.");
 
             if (dto.FromPortId == dto.ToPortId)
-                return BadRequest("동일한 포트끼리는 연결할 수 없습니다.");
+                return BadRequest("Cannot connect a port to itself.");
 
             if (string.IsNullOrWhiteSpace(dto.CableId))
-                return BadRequest("케이블 ID는 필수입니다.");
+                return BadRequest("Cable ID is required.");
 
             var cable = new Cable
             {
@@ -80,12 +81,12 @@ namespace TraceNet.Controllers
             }
             catch (Exception ex)
             {
-                throw new ApplicationException("케이블 생성 중 알 수 없는 오류 발생", ex);
+                throw new ApplicationException("An unknown error occurred while creating the cable.", ex);
             }
         }
 
         /// <summary>
-        /// 케이블 삭제 (연결 포함)
+        /// Delete a cable (including its connections)
         /// </summary>
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteCable(string id)
@@ -101,7 +102,7 @@ namespace TraceNet.Controllers
             }
             catch (Exception ex)
             {
-                throw new ApplicationException("케이블 삭제 중 오류 발생", ex);
+                throw new ApplicationException("An error occurred while deleting the cable.", ex);
             }
         }
     }

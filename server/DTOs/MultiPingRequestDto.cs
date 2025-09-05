@@ -1,7 +1,9 @@
 namespace TraceNet.DTOs
 {
     /// <summary>
-    /// 여러 장비 일괄 Ping 요청 DTO
+    /// DTO for bulk Ping requests across multiple devices.
+    /// Includes target device IDs, timeout per request, 
+    /// maximum concurrency level, and whether to update results in the database.
     /// </summary>
     public class MultiPingRequestDto
     {

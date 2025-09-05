@@ -19,7 +19,7 @@
  * ```
  */
 
-import type { Node, Edge } from "react-flow-renderer";
+import type { Edge, Node } from 'react-flow-renderer';
 
 // ==========================================
 // 타입 정의
@@ -52,7 +52,7 @@ const calculationCache = new Map<string, NodeCenterInfo>();
 const edgeIndexCache = new Map<string, Edge[]>();
 
 /** 마지막 처리된 엣지 배열의 해시값 - 변경 감지용 */
-let lastEdgesHash = "";
+let lastEdgesHash = '';
 
 // ==========================================
 // 핵심 최적화 함수들
@@ -70,9 +70,7 @@ let lastEdgesHash = "";
 function buildEdgeIndex(edges: Edge[]): Map<string, Edge[]> {
   // 엣지 구조가 변경되지 않았으면 기존 캐시 재사용
   // 해시 생성: 배열 길이 + 첫번째/마지막 엣지 ID 조합
-  const edgesHash = `${edges.length}-${edges[0]?.id || ""}-${
-    edges[edges.length - 1]?.id || ""
-  }`;
+  const edgesHash = `${edges.length}-${edges[0]?.id || ''}-${edges[edges.length - 1]?.id || ''}`;
 
   if (edgesHash === lastEdgesHash && edgeIndexCache.size > 0) {
     return edgeIndexCache;
@@ -130,7 +128,7 @@ function buildNodeMap(nodes: Node[]): Map<string, Node> {
 function calculateNodeCenterOptimized(
   targetNodeId: string,
   nodeMap: Map<string, Node>,
-  edgeIndex: Map<string, Edge[]>
+  edgeIndex: Map<string, Edge[]>,
 ): NodeCenterInfo | null {
   // 1단계: 이미 계산된 결과가 있으면 캐시에서 반환
   if (calculationCache.has(targetNodeId)) {
@@ -154,15 +152,14 @@ function calculateNodeCenterOptimized(
 
   for (const edge of connectedEdges) {
     // 연결 상대방 노드 ID 추출
-    const connectedNodeId =
-      edge.source === targetNodeId ? edge.target : edge.source;
+    const connectedNodeId = edge.source === targetNodeId ? edge.target : edge.source;
     const connectedNode = nodeMap.get(connectedNodeId);
 
     // 위치 정보가 유효한 노드만 수집
     if (
       connectedNode?.position &&
-      typeof connectedNode.position.x === "number" &&
-      typeof connectedNode.position.y === "number" &&
+      typeof connectedNode.position.x === 'number' &&
+      typeof connectedNode.position.y === 'number' &&
       !isNaN(connectedNode.position.x) &&
       !isNaN(connectedNode.position.y)
     ) {
@@ -180,11 +177,9 @@ function calculateNodeCenterOptimized(
 
   // 5단계: 무게중심 계산 (수학적 평균)
   const centerX =
-    connectedPositions.reduce((sum, pos) => sum + pos.x, 0) /
-    connectedPositions.length;
+    connectedPositions.reduce((sum, pos) => sum + pos.x, 0) / connectedPositions.length;
   const centerY =
-    connectedPositions.reduce((sum, pos) => sum + pos.y, 0) /
-    connectedPositions.length;
+    connectedPositions.reduce((sum, pos) => sum + pos.y, 0) / connectedPositions.length;
 
   // 6단계: 계산 결과 검증
   if (isNaN(centerX) || isNaN(centerY)) {
@@ -222,7 +217,7 @@ function calculateNodeCenterOptimized(
  */
 export function calculateCentralNodesCenters(
   nodes: Node[],
-  edges: Edge[]
+  edges: Edge[],
 ): Map<string, NodeCenterInfo> {
   // 개발 환경에서만 성능 로깅 활성화
   // const isDebug =
@@ -238,16 +233,12 @@ export function calculateCentralNodesCenters(
   // 서버/스위치만 이동 - PC는 고정 유지
   const centralNodes = nodes.filter((node) => {
     const nodeType = node.data?.type?.toLowerCase();
-    return nodeType === "server" || nodeType === "switch";
+    return nodeType === 'server' || nodeType === 'switch';
   });
 
   // 3단계: 각 중심 노드의 중심점 계산
   for (const node of centralNodes) {
-    const centerInfo = calculateNodeCenterOptimized(
-      node.id,
-      nodeMap,
-      edgeIndex
-    );
+    const centerInfo = calculateNodeCenterOptimized(node.id, nodeMap, edgeIndex);
     if (centerInfo) {
       centersMap.set(node.id, centerInfo);
     }
@@ -277,7 +268,7 @@ export function calculateCentralNodesCenters(
  */
 export function updateNodesWithCenters(
   nodes: Node[],
-  centerInfoMap: Map<string, NodeCenterInfo>
+  centerInfoMap: Map<string, NodeCenterInfo>,
 ): Node[] {
   if (centerInfoMap.size === 0) {
     return nodes; // 중심점 정보 없으면 원본 그대로 반환
@@ -304,8 +295,7 @@ export function updateNodesWithCenters(
     //updatedCount++; // 로그용
 
     // 노드 타입별 크기 조회
-    const nodeType = (node.data?.type?.toLowerCase() ||
-      "pc") as keyof typeof NODE_SIZES;
+    const nodeType = (node.data?.type?.toLowerCase() || 'pc') as keyof typeof NODE_SIZES;
     const nodeSize = NODE_SIZES[nodeType] || NODE_SIZES.pc;
 
     // 중심점 좌표를 UI 렌더링용 좌상단 좌표로 변환
@@ -364,22 +354,18 @@ export function updateNodesWithCenters(
  */
 export function alignNodesToCalculatedCenters(
   layoutedNodes: Node[],
-  layoutedEdges: Edge[]
+  layoutedEdges: Edge[],
 ): { nodes: Node[]; edges: Edge[] } {
   // 개발 환경에서만 성능 측정
-  const isDebug =
-    typeof window !== "undefined" && window.location.hostname === "localhost";
+  const isDebug = typeof window !== 'undefined' && window.location.hostname === 'localhost';
   const startTime = isDebug ? performance.now() : 0;
 
   // 1단계: 중심점 계산
-  const centerInfoMap = calculateCentralNodesCenters(
-    layoutedNodes,
-    layoutedEdges
-  );
+  const centerInfoMap = calculateCentralNodesCenters(layoutedNodes, layoutedEdges);
 
   if (centerInfoMap.size === 0) {
     if (isDebug) {
-      console.warn("계산된 중심점이 없습니다. 원본 레이아웃 유지");
+      console.warn('계산된 중심점이 없습니다. 원본 레이아웃 유지');
     }
     return { nodes: layoutedNodes, edges: layoutedEdges };
   }
@@ -391,9 +377,7 @@ export function alignNodesToCalculatedCenters(
   if (isDebug) {
     const endTime = performance.now();
     const duration = Math.round(endTime - startTime);
-    console.log(
-      `중심점 정렬 완료: ${duration}ms (${centerInfoMap.size}개 노드 처리)`
-    );
+    console.log(`중심점 정렬 완료: ${duration}ms (${centerInfoMap.size}개 노드 처리)`);
   }
 
   return {
@@ -419,13 +403,10 @@ export function alignNodesToCalculatedCenters(
 export function clearCalculationCache(): void {
   calculationCache.clear();
   edgeIndexCache.clear();
-  lastEdgesHash = "";
+  lastEdgesHash = '';
 
-  if (
-    typeof window !== "undefined" &&
-    window.location.hostname === "localhost"
-  ) {
-    console.log("중심점 계산 캐시 클리어 완료");
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    console.log('중심점 계산 캐시 클리어 완료');
   }
 }
 
@@ -440,7 +421,7 @@ export function getCacheStats() {
     edgeIndexCacheSize: edgeIndexCache.size,
     lastEdgesHash,
     memoryEstimate: `~${Math.round(
-      (calculationCache.size * 200 + edgeIndexCache.size * 100) / 1024
+      (calculationCache.size * 200 + edgeIndexCache.size * 100) / 1024,
     )}KB`,
   };
 }

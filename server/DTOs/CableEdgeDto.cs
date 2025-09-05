@@ -1,8 +1,6 @@
 namespace TraceNet.DTOs
 {
-    /// <summary>
-    /// React Flow용 장비 간 케이블 연결 정보를 나타내는 DTO
-    /// </summary>
+
     public class CableEdgeDto
     {
         public string CableId { get; set; } = null!;

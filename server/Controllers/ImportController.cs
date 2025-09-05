@@ -7,16 +7,16 @@ using TraceNet.Models;
 namespace TraceNet.Controllers;
 
 /// <summary>
-/// 네트워크 토폴로지 데이터 Import 컨트롤러
+/// Network Topology Data Import Controller
 /// 
-/// JSON 파일을 통해 랙, 장비, 케이블 정보를 일괄 업로드하는 기능을 제공합니다.
-/// 데이터 Import 순서: Rack → Device → Cable 순으로 의존성을 고려하여 처리됩니다.
+/// Provides a bulk upload feature for racks, devices, and cables via a JSON file.
+/// Import order considers dependencies in the following sequence: Rack → Device → Cable.
 /// 
-/// 주요 기능:
-/// - JSON 형식의 네트워크 토폴로지 데이터 parsing
-/// - 데이터베이스 트랜잭션을 통한 안전한 일괄 업로드
-/// - 데이터 무결성 검증 및 에러 처리
-/// - 장비 포트 자동 생성
+/// Key Features:
+/// - Parse network topology data in JSON format
+/// - Safe bulk upload using a database transaction
+/// - Data integrity validation and error handling
+/// - Automatic port creation for devices
 /// </summary>
 [ApiController]
 [Route("api/import")]
@@ -32,21 +32,21 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// JSON 파일을 통한 네트워크 데이터 Import
+    /// Import network data from an uploaded JSON file
     /// 
-    /// 처리 순서:
-    /// 1. 파일 유효성 검증
-    /// 2. JSON 파싱 및 데이터 구조 검증
-    /// 3. 트랜잭션 내에서 데이터베이스 Import 실행
-    /// 4. 성공/실패 응답 반환
+    /// Processing steps:
+    /// 1. Validate the uploaded file
+    /// 2. Parse JSON and validate the data structure
+    /// 3. Execute DB import within a transaction
+    /// 4. Return success/failure response
     /// </summary>
-    /// <param name="file">업로드된 JSON 파일</param>
-    /// <returns>Import 결과 메시지</returns>
+    /// <param name="file">Uploaded JSON file</param>
+    /// <returns>Import result message</returns>
     [HttpPost]
     public async Task<IActionResult> ImportJson(IFormFile file)
     {
         // ========================================================================
-        // 1단계: 입력 파일 유효성 검증
+        // Step 1: Validate uploaded file
         // ========================================================================
         var validationResult = ValidateUploadedFile(file);
         if (validationResult != null)
@@ -55,17 +55,17 @@ public class ImportController : ControllerBase
         try
         {
             // ====================================================================
-            // 2단계: 파일 읽기 및 JSON 파싱
+            // Step 2: Read file and parse JSON
             // ====================================================================
             var importData = await ParseJsonFile(file);
             if (importData == null)
-                return BadRequest(CreateErrorResponse("JSON 파싱 실패: 형식이 잘못되었습니다."));
+                return BadRequest(CreateErrorResponse("JSON parsing failed: invalid format."));
 
-            _logger.LogInformation("JSON 파싱 완료 - Racks: {RackCount}, Devices: {DeviceCount}, Cables: {CableCount}",
+            _logger.LogInformation("JSON parsed - Racks: {RackCount}, Devices: {DeviceCount}, Cables: {CableCount}",
                 importData.Racks.Count, importData.Devices.Count, importData.Cables.Count);
 
             // ====================================================================
-            // 3단계: 데이터베이스 Import 실행 (트랜잭션)
+            // Step 3: Execute database import (transaction)
             // ====================================================================
             var strategy = _context.Database.CreateExecutionStrategy();
             IActionResult? actionResult = null;
@@ -78,51 +78,51 @@ public class ImportController : ControllerBase
                     await ImportToDatabase(importData);
                     await tx.CommitAsync();
 
-                    _logger.LogInformation("데이터 Import 성공");
-                    actionResult = Ok(CreateSuccessResponse("데이터가 성공적으로 업로드되었습니다."));
+                    _logger.LogInformation("Data import succeeded");
+                    actionResult = Ok(CreateSuccessResponse("Data has been uploaded successfully."));
                 }
                 catch (Exception ex)
                 {
                     await tx.RollbackAsync();
-                    _logger.LogError(ex, "데이터 Import 중 오류 발생");
-                    // 재시도 전략이 에러를 감지하도록 rethrow 필수
+                    _logger.LogError(ex, "Error occurred during data import");
+                    // Rethrow so the execution strategy can observe the failure for retries if applicable
                     throw;
                 }
             });
 
-            return actionResult!; 
+            return actionResult!;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Import 처리 중 오류 발생");
-            return BadRequest(CreateErrorResponse($"오류 발생: {ex.Message}"));
+            _logger.LogError(ex, "Error occurred while processing the import");
+            return BadRequest(CreateErrorResponse($"An error occurred: {ex.Message}"));
         }
     }
 
     // ============================================================================
-    // Private 헬퍼 메서드들
+    // Private helper methods
     // ============================================================================
 
     /// <summary>
-    /// 업로드된 파일의 기본 유효성 검증
+    /// Basic validation for the uploaded file
     /// </summary>
     private IActionResult? ValidateUploadedFile(IFormFile? file)
     {
         if (file == null || file.Length == 0)
-            return BadRequest(CreateErrorResponse("업로드된 파일이 비어 있습니다."));
+            return BadRequest(CreateErrorResponse("The uploaded file is empty."));
 
         if (!file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(CreateErrorResponse("JSON 파일만 업로드 가능합니다."));
+            return BadRequest(CreateErrorResponse("Only JSON files are allowed."));
 
-        // 파일 크기 제한 (10MB)
+        // File size limit (10MB)
         if (file.Length > 10 * 1024 * 1024)
-            return BadRequest(CreateErrorResponse("파일 크기가 너무 큽니다. (최대 10MB)"));
+            return BadRequest(CreateErrorResponse("File is too large. (Max 10MB)"));
 
         return null;
     }
 
     /// <summary>
-    /// JSON 파일을 읽어서 ImportData 객체로 파싱
+    /// Read the JSON file and deserialize into an ImportData object
     /// </summary>
     private async Task<ImportData?> ParseJsonFile(IFormFile file)
     {
@@ -140,36 +140,36 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// 파싱된 데이터를 데이터베이스에 Import
+    /// Import parsed data into the database
     /// 
-    /// Import 순서 (의존성 고려):
-    /// 1. Rack 생성 → RackId 매핑 테이블 생성
-    /// 2. Device 생성 → Port 자동 생성 → DeviceId 매핑 테이블 생성  
-    /// 3. Cable 및 CableConnection 생성
+    /// Import order (considering dependencies):
+    /// 1. Create Racks → build RackId mapping table
+    /// 2. Create Devices → auto-create Ports → build DeviceId mapping table
+    /// 3. Create Cables and CableConnections
     /// </summary>
     private async Task ImportToDatabase(ImportData data)
     {
         // ========================================================================
-        // 1단계: Rack Import 및 ID 매핑 생성
+        // Step 1: Import Racks and build ID mapping
         // ========================================================================
         var rackIdMap = await ImportRacks(data.Racks);
-        _logger.LogDebug("Rack Import 완료: {Count}개", rackIdMap.Count);
+        _logger.LogDebug("Rack import completed: {Count}", rackIdMap.Count);
 
         // ========================================================================
-        // 2단계: Device Import 및 Port 자동 생성
+        // Step 2: Import Devices and auto-create Ports
         // ========================================================================
         var deviceMap = await ImportDevices(data.Devices, rackIdMap);
-        _logger.LogDebug("Device Import 완료: {Count}개", deviceMap.Count);
+        _logger.LogDebug("Device import completed: {Count}", deviceMap.Count);
 
         // ========================================================================
-        // 3단계: Cable 및 Connection Import
+        // Step 3: Import Cables and Connections
         // ========================================================================
         await ImportCables(data.Cables, deviceMap);
-        _logger.LogDebug("Cable Import 완료: {Count}개", data.Cables.Count);
+        _logger.LogDebug("Cable import completed: {Count}", data.Cables.Count);
     }
 
     /// <summary>
-    /// 랙 정보 Import 및 ID 매핑 테이블 생성
+    /// Import rack info and build an ID mapping table
     /// </summary>
     private async Task<Dictionary<string, int>> ImportRacks(List<ImportRack> racks)
     {
@@ -184,17 +184,17 @@ public class ImportController : ControllerBase
             };
 
             _context.Racks.Add(entity);
-            await _context.SaveChangesAsync(); // ID 생성을 위해 즉시 저장
+            await _context.SaveChangesAsync(); // Save immediately to get the generated ID
 
             rackIdMap[rack.Name] = entity.RackId;
-            _logger.LogDebug("Rack 생성: {Name} (ID: {Id})", entity.Name, entity.RackId);
+            _logger.LogDebug("Rack created: {Name} (ID: {Id})", entity.Name, entity.RackId);
         }
 
         return rackIdMap;
     }
 
     /// <summary>
-    /// 장비 정보 Import 및 포트 자동 생성
+    /// Import device info and auto-create ports
     /// </summary>
     private async Task<Dictionary<string, Device>> ImportDevices(
         List<ImportDevice> devices,
@@ -204,7 +204,7 @@ public class ImportController : ControllerBase
 
         foreach (var deviceInfo in devices)
         {
-            // 장비 엔티티 생성
+            // Create device entity
             var device = new Device
             {
                 Name = deviceInfo.Name.Trim(),
@@ -215,21 +215,21 @@ public class ImportController : ControllerBase
                 Ports = new List<Port>()
             };
 
-            // 포트 자동 생성 (1번부터 PortCount까지)
+            // Auto-create ports (from 1 to PortCount)
             for (int portNumber = 1; portNumber <= deviceInfo.PortCount; portNumber++)
             {
                 device.Ports.Add(new Port
                 {
                     Name = portNumber.ToString(),
-                    // Device는 EF가 자동으로 설정
+                    // Device is set automatically by EF
                 });
             }
 
             _context.Devices.Add(device);
-            await _context.SaveChangesAsync(); // ID 생성 및 포트 ID 할당
+            await _context.SaveChangesAsync(); // Generate IDs and assign port IDs
 
             deviceMap[deviceInfo.Name] = device;
-            _logger.LogDebug("Device 생성: {Name} (포트 {PortCount}개)",
+            _logger.LogDebug("Device created: {Name} ({PortCount} ports)",
                 device.Name, device.PortCount);
         }
 
@@ -237,13 +237,13 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// 케이블 정보 Import 및 연결 관계 생성
+    /// Import cable info and create connection relationships
     /// </summary>
     private async Task ImportCables(List<ImportCable> cables, Dictionary<string, Device> deviceMap)
     {
         foreach (var cableInfo in cables)
         {
-            // 케이블 엔티티 생성
+            // Create cable entity
             var cable = new Cable
             {
                 CableId = cableInfo.CableId.Trim(),
@@ -253,11 +253,11 @@ public class ImportController : ControllerBase
             _context.Cables.Add(cable);
             await _context.SaveChangesAsync();
 
-            // 연결할 장비 및 포트 검색
+            // Resolve devices and ports to connect
             var (fromDevice, toDevice) = GetDevicesForCable(cableInfo, deviceMap);
             var (fromPort, toPort) = GetPortsForCable(cableInfo, fromDevice, toDevice);
 
-            // 케이블 연결 관계 생성
+            // Create cable connection
             var connection = new CableConnection
             {
                 CableId = cable.CableId,
@@ -266,7 +266,7 @@ public class ImportController : ControllerBase
             };
 
             _context.CableConnections.Add(connection);
-            _logger.LogDebug("Cable 연결: {CableId} ({FromDevice}:{FromPort} → {ToDevice}:{ToPort})",
+            _logger.LogDebug("Cable connected: {CableId} ({FromDevice}:{FromPort} → {ToDevice}:{ToPort})",
                 cable.CableId, fromDevice.Name, fromPort.Name, toDevice.Name, toPort.Name);
         }
 
@@ -274,11 +274,11 @@ public class ImportController : ControllerBase
     }
 
     // ============================================================================
-    // 유틸리티 메서드들
+    // Utility methods
     // ============================================================================
 
     /// <summary>
-    /// 랙 이름으로 RackId 조회 (nullable 처리)
+    /// Get RackId by rack name (nullable-friendly)
     /// </summary>
     private int? GetRackId(string? rackName, Dictionary<string, int> rackIdMap)
     {
@@ -289,23 +289,23 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// 케이블 연결에 필요한 장비 쌍 조회
+    /// Resolve the pair of devices needed for a cable connection
     /// </summary>
     private (Device FromDevice, Device ToDevice) GetDevicesForCable(
         ImportCable cableInfo,
         Dictionary<string, Device> deviceMap)
     {
         if (!deviceMap.TryGetValue(cableInfo.FromDevice, out var fromDevice))
-            throw new InvalidOperationException($"FromDevice '{cableInfo.FromDevice}'를 찾을 수 없습니다.");
+            throw new InvalidOperationException($"FromDevice '{cableInfo.FromDevice}' not found.");
 
         if (!deviceMap.TryGetValue(cableInfo.ToDevice, out var toDevice))
-            throw new InvalidOperationException($"ToDevice '{cableInfo.ToDevice}'를 찾을 수 없습니다.");
+            throw new InvalidOperationException($"ToDevice '{cableInfo.ToDevice}' not found.");
 
         return (fromDevice, toDevice);
     }
 
     /// <summary>
-    /// 케이블 연결에 필요한 포트 쌍 조회
+    /// Resolve the pair of ports needed for a cable connection
     /// </summary>
     private (Port FromPort, Port ToPort) GetPortsForCable(
         ImportCable cableInfo,
@@ -315,34 +315,34 @@ public class ImportController : ControllerBase
         var fromPort = fromDevice.Ports.FirstOrDefault(p => p.Name == cableInfo.FromPort);
         if (fromPort == null)
             throw new InvalidOperationException(
-                $"Device '{fromDevice.Name}'에서 포트 '{cableInfo.FromPort}'를 찾을 수 없습니다.");
+                $"Port '{cableInfo.FromPort}' not found on device '{fromDevice.Name}'.");
 
         var toPort = toDevice.Ports.FirstOrDefault(p => p.Name == cableInfo.ToPort);
         if (toPort == null)
             throw new InvalidOperationException(
-                $"Device '{toDevice.Name}'에서 포트 '{cableInfo.ToPort}'를 찾을 수 없습니다.");
+                $"Port '{cableInfo.ToPort}' not found on device '{toDevice.Name}'.");
 
         return (fromPort, toPort);
     }
 
     /// <summary>
-    /// 성공 응답 객체 생성
+    /// Create a success response object
     /// </summary>
     private object CreateSuccessResponse(string message) => new { success = true, message = $"✅ {message}" };
 
     /// <summary>
-    /// 에러 응답 객체 생성
+    /// Create an error response object
     /// </summary>
     private object CreateErrorResponse(string message) => new { success = false, message = $"❌ {message}" };
 
     // ============================================================================
-    // Import 데이터 모델들 (JSON 파싱용)
+    // Import data models (for JSON parsing)
     // ============================================================================
 
     #region Import Data Models
 
     /// <summary>
-    /// JSON Import 데이터의 최상위 구조
+    /// Root structure of JSON import data
     /// </summary>
     private class ImportData
     {
@@ -352,7 +352,7 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// Import용 랙 정보 모델
+    /// Rack model for import
     /// </summary>
     private class ImportRack
     {
@@ -361,7 +361,7 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// Import용 장비 정보 모델
+    /// Device model for import
     /// </summary>
     private class ImportDevice
     {
@@ -373,7 +373,7 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// Import용 케이블 정보 모델
+    /// Cable model for import
     /// </summary>
     private class ImportCable
     {

@@ -15,10 +15,10 @@ namespace TraceNet.Services
         private readonly PingService _pingService;
 
         public DeviceService(
-        TraceNetDbContext context,
-        IMapper mapper,
-        ILogger<DeviceService> logger,
-        PingService pingService)
+            TraceNetDbContext context,
+            IMapper mapper,
+            ILogger<DeviceService> logger,
+            PingService pingService)
         {
             _context = context;
             _mapper = mapper;
@@ -27,56 +27,56 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 전체 디바이스 목록 + 포트 포함 조회
-        /// 
-        /// 성능 최적화:
-        /// - AsSplitQuery(): 복잡한 Include 관계를 여러 쿼리로 분할하여 N+1 문제 방지
-        /// - AsNoTracking(): 읽기 전용으로 변경 추적 비활성화하여 메모리 절약
-        /// 
-        /// Include 구조: Device → Ports → Connection → ToPort → ToDevice
+        /// Retrieve all devices including ports.
+        ///
+        /// Performance optimizations:
+        /// - AsSplitQuery(): split complex Include graphs to avoid N+1 issues.
+        /// - AsNoTracking(): disable change tracking for read-only queries.
+        ///
+        /// Include graph: Device → Ports → Connection → ToPort → ToDevice
         /// </summary>
         public async Task<List<DeviceDto>> GetAllAsync()
         {
-            // 복합 Include 쿼리 - 전체 네트워크 토폴로지 조회
+            // Composite Include query — fetch full network topology
             var devices = await _context.Devices
-            .Include(d => d.Rack)
-                .Include(d => d.Ports)                    // 장비의 모든 포트
-                    .ThenInclude(p => p.Connection)       // 각 포트의 연결 정보
-                        .ThenInclude(c => c.ToPort)       // 연결 대상 포트
-                            .ThenInclude(p => p.Device)   // 연결 대상 장비
-                .AsSplitQuery()    // 복잡한 관계를 여러 쿼리로 분할
-                .AsNoTracking()    // 변경 추적 비활성화 (읽기 전용)
+                .Include(d => d.Rack)
+                .Include(d => d.Ports)                    // all ports of the device
+                    .ThenInclude(p => p.Connection)       // connection of each port
+                        .ThenInclude(c => c.ToPort)       // destination port
+                            .ThenInclude(p => p.Device)   // destination device
+                .AsSplitQuery()    // split complex relationships into multiple queries
+                .AsNoTracking()    // read-only
                 .ToListAsync();
 
-            // 디버깅용 연결 관계 검증 루프
+            // Connection sanity check loop for debugging (kept as comment)
             foreach (var device in devices)
             {
                 foreach (var port in device.Ports)
                 {
                     if (port.Connection != null)
                     {
-                        // 디버깅 로그
-                        //Console.WriteLine($"[DEBUG] Port {port.PortId} → ToPort {port.Connection.ToPort?.PortId} / ToDevice {port.Connection.ToPort?.Device?.DeviceId}");
+                        // Debug log:
+                        // Console.WriteLine($"[DEBUG] Port {port.PortId} → ToPort {port.Connection.ToPort?.PortId} / ToDevice {port.Connection.ToPort?.Device?.DeviceId}");
                     }
                 }
             }
 
-            // Entity → DTO 변환 (AutoMapper 사용)
+            // Entity → DTO conversion (AutoMapper)
             return _mapper.Map<List<DeviceDto>>(devices);
         }
 
         /// <summary>
-        /// 새로운 디바이스 등록 + 포트 자동 생성
+        /// Create a new device and auto-generate ports.
         /// </summary>
         public async Task<Device?> CreateAsync(Device device)
         {
             if (string.IsNullOrWhiteSpace(device.Name) || device.PortCount <= 0)
                 return null;
 
-            // Ports 리스트 초기화
+            // Initialize Ports list
             if (device.Ports == null || device.Ports.Count == 0)
             {
-                device.Ports = new List<Port>(); // null이면 새 리스트 생성
+                device.Ports = new List<Port>(); // create if null
 
                 for (int i = 0; i < device.PortCount; i++)
                 {
@@ -84,32 +84,20 @@ namespace TraceNet.Services
                 }
             }
 
-            // 기존:
-            // if (!string.Equals(device.Type, "Switch", StringComparison.OrdinalIgnoreCase))
-            // {
-            //     device.RackId = null;
-            // }
-            // else
-            // {
-            //     bool rackExists = await _context.Racks.AnyAsync(r => r.RackId == device.RackId);
-            //     if (!rackExists)
-            //         return null;
-            // }
-
+            // Switch-specific rack handling
             if (!string.Equals(device.Type, "Switch", StringComparison.OrdinalIgnoreCase))
             {
-                device.RackId = null; // 스위치 외에는 무조건 null
+                device.RackId = null; // must be null for non-switch devices
             }
             else
             {
-                // 스위치여도 RackId 없으면 통과(선택사항)
+                // Rack is optional for switches; if provided, verify existence
                 if (device.RackId.HasValue)
                 {
                     var exists = await _context.Racks.AnyAsync(r => r.RackId == device.RackId.Value);
-                    if (!exists) device.RackId = null; // 이상한 값 오면 무시
+                    if (!exists) device.RackId = null; // ignore invalid value
                 }
             }
-
 
             _context.Devices.Add(device);
             await _context.SaveChangesAsync();
@@ -120,7 +108,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 디바이스 + 연결된 포트, 연결, 케이블 삭제
+        /// Delete a device and its related ports, connections, and cables.
         /// </summary>
         public async Task<bool> DeleteAsync(int deviceId)
         {
@@ -130,10 +118,10 @@ namespace TraceNet.Services
 
             if (device == null) return false;
 
-            // 이 장비의 모든 포트 ID
+            // All port IDs on this device
             var portIds = device.Ports.Select(p => p.PortId).ToList();
 
-            // FromPort 또는 ToPort 로 물린 모든 케이블 연결 수집
+            // Collect all cable connections where this device's ports appear as FromPort or ToPort
             var connectionsToDelete = await _context.CableConnections
                 .Where(cc => portIds.Contains(cc.FromPortId) || portIds.Contains(cc.ToPortId))
                 .ToListAsync();
@@ -143,19 +131,19 @@ namespace TraceNet.Services
                 .Distinct()
                 .ToList();
 
-            // 1) 연결 삭제
+            // 1) remove connections
             _context.CableConnections.RemoveRange(connectionsToDelete);
 
-            // 2) 케이블 삭제 (연결 지운 뒤)
+            // 2) remove cables (after removing connections)
             var cablesToDelete = await _context.Cables
                 .Where(c => cableIds.Contains(c.CableId))
                 .ToListAsync();
             _context.Cables.RemoveRange(cablesToDelete);
 
-            // 3) 포트 삭제
+            // 3) remove ports
             _context.Ports.RemoveRange(device.Ports);
 
-            // 4) 장비 삭제
+            // 4) remove device
             _context.Devices.Remove(device);
 
             await _context.SaveChangesAsync();
@@ -163,21 +151,21 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 모든 장비를 기존 DeleteAsync(deviceId) 로직을 재사용해 순차 삭제.
-        /// 이미 검증된 단일 삭제 경로를 그대로 이용하므로 안전함.
+        /// Delete all devices sequentially by reusing DeleteAsync(deviceId).
+        /// Safe because it reuses the already-validated single-delete path.
         /// </summary>
         public async Task<(int deletedDevices, int deletedPorts, int deletedConnections, int deletedCables)> DeleteAllAsync()
         {
-            // 삭제 전 개수 취합 
+            // Capture counts before deletion
             var totalPorts = await _context.Ports.CountAsync();
             var totalConnections = await _context.CableConnections.CountAsync();
             var totalCables = await _context.Cables.CountAsync();
 
-            // 장비 ID만 가볍게 조회
+            // Fetch device IDs only (lightweight)
             var ids = await _context.Devices.Select(d => d.DeviceId).ToListAsync();
             int ok = 0;
 
-            // 기존 검증된 삭제 루틴 재사용
+            // Reuse the validated deletion routine
             foreach (var id in ids)
             {
                 var success = await DeleteAsync(id);
@@ -187,17 +175,16 @@ namespace TraceNet.Services
             return (ok, totalPorts, totalConnections, totalCables);
         }
 
-
         /// <summary>
-        /// 단일 장비 Ping 실행
+        /// Execute Ping for a single device.
         /// </summary>
         public async Task<PingResultDto> PingDeviceAsync(int deviceId, int timeoutMs = 2000)
         {
             var device = await _context.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId);
             if (device == null)
-                throw new KeyNotFoundException($"장비 ID {deviceId}를 찾을 수 없습니다.");
+                throw new KeyNotFoundException($"Device ID {deviceId} not found.");
 
-            // 수동모드: Ping 건너뜀 (마지막 점검시간만 업데이트)
+            // Manual mode: skip ping (update only the last-checked timestamp)
             if (!device.EnablePing)
             {
                 device.LastCheckedAt = DateTime.UtcNow;
@@ -209,7 +196,7 @@ namespace TraceNet.Services
                     IpAddress = device.IPAddress ?? "",
                     Status = device.Status ?? "Unknown",
                     CheckedAt = DateTime.UtcNow,
-                    ErrorMessage = "Ping 비활성화됨 (EnablePing=false)"
+                    ErrorMessage = "Ping disabled (EnablePing=false)"
                 };
             }
 
@@ -224,7 +211,7 @@ namespace TraceNet.Services
                     IpAddress = "",
                     Status = "Unknown",
                     CheckedAt = DateTime.UtcNow,
-                    ErrorMessage = "IP 주소가 설정되지 않음"
+                    ErrorMessage = "IP address is not configured"
                 };
             }
 
@@ -247,14 +234,13 @@ namespace TraceNet.Services
             };
         }
 
-
         /// <summary>
-        /// 여러 장비 일괄 Ping 실행 (안전한 매핑 방식)
+        /// Execute Ping for multiple devices (safe mapping approach).
         /// </summary>
         public async Task<List<PingResultDto>> PingMultipleDevicesAsync(
-     List<int> deviceIds, int timeoutMs = 2000, int maxConcurrency = 10)
+            List<int> deviceIds, int timeoutMs = 2000, int maxConcurrency = 10)
         {
-            _logger.LogInformation("다중 Ping 시작: 장비 수={Count}, 동시성={MaxConcurrency}",
+            _logger.LogInformation("Bulk ping started: count={Count}, concurrency={MaxConcurrency}",
                 deviceIds.Count, maxConcurrency);
 
             var devices = await _context.Devices
@@ -264,7 +250,7 @@ namespace TraceNet.Services
             var results = new List<PingResultDto>();
             if (!devices.Any()) return results;
 
-            // 1) EnablePing=false
+            // 1) EnablePing = false
             var disabled = devices.Where(d => !d.EnablePing).ToList();
             foreach (var d in disabled)
             {
@@ -276,11 +262,11 @@ namespace TraceNet.Services
                     IpAddress = d.IPAddress ?? "",
                     Status = d.Status ?? "Unknown",
                     CheckedAt = DateTime.UtcNow,
-                    ErrorMessage = "Ping 비활성화됨 (EnablePing=false)"
+                    ErrorMessage = "Ping disabled (EnablePing=false)"
                 });
             }
 
-            // 2) IP 없음 (EnablePing=true)
+            // 2) Missing IP (EnablePing = true)
             var noIp = devices.Where(d => string.IsNullOrEmpty(d.IPAddress) && d.EnablePing).ToList();
             foreach (var d in noIp)
             {
@@ -292,17 +278,17 @@ namespace TraceNet.Services
                     IpAddress = "",
                     Status = "Unknown",
                     CheckedAt = DateTime.UtcNow,
-                    ErrorMessage = "IP 주소가 설정되지 않음"
+                    ErrorMessage = "IP address is not configured"
                 });
             }
 
-            // 3) 실제 Ping 대상 (IP 있고 EnablePing=true)
+            // 3) Actual ping targets (has IP and EnablePing = true)
             var targets = devices.Where(d => !string.IsNullOrEmpty(d.IPAddress) && d.EnablePing).ToList();
             if (targets.Any())
             {
                 using var sem = new SemaphoreSlim(maxConcurrency, maxConcurrency);
 
-                // 병렬 태스크에서는 EF 엔티티 수정 금지! 결과만 반환
+                // Do not mutate EF entities from parallel tasks — return only results
                 var pingTasks = targets.Select(async d =>
                 {
                     await sem.WaitAsync();
@@ -319,7 +305,7 @@ namespace TraceNet.Services
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "장비 {DeviceId}({IP}) Ping 실패", d.DeviceId, d.IPAddress);
+                        _logger.LogError(ex, "Ping failed for device {DeviceId} ({IP})", d.DeviceId, d.IPAddress);
                         return new
                         {
                             d.DeviceId,
@@ -339,7 +325,7 @@ namespace TraceNet.Services
 
                 var pinged = await Task.WhenAll(pingTasks);
 
-                // ← 단일 스레드에서 EF 엔티티 업데이트
+                // Update EF entities on a single thread
                 var byId = devices.ToDictionary(x => x.DeviceId);
                 foreach (var x in pinged)
                 {
@@ -365,14 +351,13 @@ namespace TraceNet.Services
             return results;
         }
 
-
         /// <summary>
-        /// 장비 상태 조회 (최신 Ping 결과 포함)
+        /// Retrieve device details including latest ping result.
         /// </summary>
         public async Task<DeviceDto?> GetWithStatusAsync(int deviceId)
         {
             var device = await _context.Devices
-            .Include(d => d.Rack)
+                .Include(d => d.Rack)
                 .Include(d => d.Ports)
                     .ThenInclude(p => p.Connection)
                         .ThenInclude(c => c.ToPort)
@@ -394,12 +379,12 @@ namespace TraceNet.Services
         {
             if (string.IsNullOrWhiteSpace(s)) return "Unknown";
             var lower = s.Trim().ToLowerInvariant();
-            // 첫 글자 대문자화
+            // Capitalize the first character
             return char.ToUpper(lower[0], CultureInfo.InvariantCulture) + lower[1..];
         }
 
         /// <summary>
-        /// 수동 상태 업데이트 (선택적으로 EnablePing도 변경)
+        /// Manually update device status (optionally update EnablePing).
         /// </summary>
         public async Task<DeviceDto?> UpdateStatusAsync(int deviceId, string status, bool? enablePing = null)
         {
@@ -408,12 +393,12 @@ namespace TraceNet.Services
 
             var normalized = NormalizeStatus(status);
             if (!AllowedStatuses.Contains(normalized))
-                throw new ArgumentException($"허용되지 않는 상태: {status}");
+                throw new ArgumentException($"Unsupported status: {status}");
 
             device.Status = normalized;
             if (enablePing.HasValue) device.EnablePing = enablePing.Value;
             device.LastCheckedAt = DateTime.UtcNow;
-            // 수동 지정이면 레이턴시는 무의미할 수 있음
+            // Latency may not be meaningful when status is manually set
             device.LatencyMs = null;
 
             await _context.SaveChangesAsync();
@@ -421,53 +406,53 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// 다수 장비 상태 일괄 업데이트
-        /// 
-        /// 처리 로직:
-        /// 1. 중복 deviceId 제거 (마지막 요청이 우선)
-        /// 2. 존재하는 장비만 필터링
-        /// 3. 상태값 정규화 및 검증
-        /// 4. 일괄 업데이트 후 단일 SaveChanges 호출
-        /// 
-        /// 단일 트랜잭션으로 DB roundtrip 최소화
-        /// ControlBar "상태 변경" 드롭다운에서 전체 장비 일괄 처리
+        /// Bulk update statuses for multiple devices.
+        ///
+        /// Processing steps:
+        /// 1. Deduplicate deviceIds (last request wins).
+        /// 2. Filter to existing devices only.
+        /// 3. Normalize and validate status values.
+        /// 4. Apply updates and call SaveChanges once.
+        ///
+        /// Reduces DB roundtrips by using a single transaction-like save.
+        /// Used by ControlBar “Change Status” dropdown for all devices.
         /// </summary>
         public async Task<int> UpdateStatusBulkAsync(IEnumerable<(int deviceId, string status, bool? enablePing)> items)
         {
             var list = items.ToList();
             if (list.Count == 0) return 0;
 
-            // 대상 장비 ID 수집 (중복 제거)
+            // Collect target device IDs (distinct)
             var ids = list.Select(i => i.deviceId).Distinct().ToList();
 
-            // 존재하는 장비만 조회 (존재하지 않는 ID는 무시)
+            // Fetch only existing devices (ignore unknown IDs)
             var devices = await _context.Devices.Where(d => ids.Contains(d.DeviceId)).ToListAsync();
 
-            // 중복 deviceId 처리: 마지막 요청이 우선 적용
+            // Handle duplicate deviceIds: last request wins
             var map = items
                 .GroupBy(i => i.deviceId)
                 .ToDictionary(g => g.Key, g => g.Last());
 
-            // 각 장비에 대해 상태 업데이트 적용
+            // Apply updates per device
             foreach (var d in devices)
             {
                 var req = map[d.DeviceId];
 
-                // 상태값 정규화 (대소문자 통일: "online" → "Online")
+                // Normalize status (unify casing, e.g., "online" → "Online")
                 var normalized = NormalizeStatus(req.status);
                 if (!AllowedStatuses.Contains(normalized))
-                    throw new ArgumentException($"허용되지 않는 상태: {req.status}");
+                    throw new ArgumentException($"Unsupported status: {req.status}");
 
-                // 장비 상태 업데이트
+                // Update device
                 d.Status = normalized;
                 if (req.enablePing.HasValue) d.EnablePing = req.enablePing.Value;
                 d.LastCheckedAt = DateTime.UtcNow;
-                d.LatencyMs = null;  // 수동 상태 변경이므로 레이턴시 초기화
+                d.LatencyMs = null;  // reset latency for manual status changes
             }
 
-            // 모든 변경사항을 한 번에 저장 (transaction 효율성)
+            // Persist all changes in one go (efficient like a transaction)
             await _context.SaveChangesAsync();
-            return devices.Count;  // 실제 업데이트된 장비 수 반환
+            return devices.Count;  // number of devices actually updated
         }
     }
 }
