@@ -1,175 +1,173 @@
-// PingService.cs
-
-using System.Net.NetworkInformation;
+// server/Services/PingService.cs
 using System.Net;
+using System.Net.NetworkInformation;
+using System.Collections.Concurrent;
+using System.Threading;
 using TraceNet.DTOs;
 
 namespace TraceNet.Services
 {
     /// <summary>
-    /// Service that provides network Ping functionality
-    /// using System.Net.NetworkInformation.Ping to send ICMP packets.
+    /// Bounded-concurrency ICMP ping service for bulk sweeps.
+    /// Default tuning targets a typical factory LAN; make values configurable per site.
     /// </summary>
     public class PingService
     {
         private readonly ILogger<PingService> _logger;
-
-        public PingService(ILogger<PingService> logger)
-        {
-            _logger = logger;
-        }
+        public PingService(ILogger<PingService> logger) => _logger = logger;
 
         /// <summary>
-        /// Execute a ping against a single IP address.
+        /// Ping a single IP once.
+        /// Contract:
+        /// - Success < threshold(100ms) => "Online", else => "Unstable".
+        /// - Timeouts => "Offline", unreachable => "Unreachable", others => "Offline".
+        /// - Cancellation maps to "Unknown" with a reason.
         /// </summary>
-        /// <param name="ipAddress">Target IP address</param>
-        /// <param name="timeoutMs">Timeout in milliseconds</param>
-        /// <returns>PingResultDto</returns>
-        public async Task<PingResultDto> PingAsync(string ipAddress, int timeoutMs = 2000)
+        public async Task<PingResultDto> PingAsync(string ipAddress, int timeoutMs = 600, CancellationToken ct = default)
         {
-            _logger.LogInformation("Ping started: IP={IpAddress}, Timeout={Timeout}ms", ipAddress, timeoutMs);
-
-            var result = new PingResultDto
-            {
-                IpAddress = ipAddress,
-                CheckedAt = DateTime.UtcNow
-            };
+            var result = new PingResultDto { IpAddress = ipAddress, CheckedAt = DateTime.UtcNow };
 
             try
             {
-                // Validate IP address format
+                // Fail fast on invalid input.
                 if (!IPAddress.TryParse(ipAddress, out var parsedIp))
                 {
                     result.Status = "Unknown";
                     result.ErrorMessage = "Invalid IP address format";
-                    _logger.LogWarning("Invalid IP address: {IpAddress}", ipAddress);
                     return result;
                 }
 
+                // Minimal payload keeps aggregate ICMP volume low during sweeps.
+                byte[] buffer = new byte[1];
                 using var ping = new Ping();
-                var reply = await ping.SendPingAsync(parsedIp, timeoutMs);
+                var reply = await ping.SendPingAsync(parsedIp, timeoutMs, buffer).WaitAsync(ct);
 
                 result.LatencyMs = reply.RoundtripTime;
 
-                switch (reply.Status)
+                result.Status = reply.Status switch
                 {
-                    case IPStatus.Success:
-                        // Determine status based on latency
-                        result.Status = reply.RoundtripTime switch
-                        {
-                            < 100 => "Online",
-                            < 500 => "Unstable",
-                            _ => "Unstable"
-                        };
-                        _logger.LogInformation("Ping succeeded: {IpAddress} - {Latency}ms", ipAddress, reply.RoundtripTime);
-                        break;
-
-                    case IPStatus.TimedOut:
-                        result.Status = "Offline";
-                        result.ErrorMessage = "Request timed out";
-                        _logger.LogWarning("Ping timed out: {IpAddress}", ipAddress);
-                        break;
-
-                    case IPStatus.DestinationHostUnreachable:
-                    case IPStatus.DestinationNetworkUnreachable:
-                        result.Status = "Unreachable";
-                        result.ErrorMessage = $"Host unreachable: {reply.Status}";
-                        _logger.LogWarning("Ping unreachable: {IpAddress} - {Status}", ipAddress, reply.Status);
-                        break;
-
-                    default:
-                        result.Status = "Offline";
-                        result.ErrorMessage = $"Ping failed: {reply.Status}";
-                        _logger.LogWarning("Ping failed: {IpAddress} - {Status}", ipAddress, reply.Status);
-                        break;
-                }
+                    IPStatus.Success => reply.RoundtripTime < 100 ? "Online" : "Unstable",
+                    IPStatus.TimedOut => "Offline",
+                    IPStatus.DestinationHostUnreachable or IPStatus.DestinationNetworkUnreachable => "Unreachable",
+                    _ => "Offline"
+                };
+                if (reply.Status != IPStatus.Success) result.ErrorMessage = reply.Status.ToString();
+            }
+            catch (OperationCanceledException)
+            {
+                // Global time limit or caller cancellation.
+                result.Status = "Unknown";
+                result.ErrorMessage = "Ping cancelled";
             }
             catch (PingException ex)
             {
                 result.Status = "Unknown";
                 result.ErrorMessage = $"Ping error: {ex.Message}";
-                _logger.LogError(ex, "Ping exception: {IpAddress}", ipAddress);
+                _logger.LogWarning(ex, "Ping exception: {Ip}", ipAddress);
             }
             catch (Exception ex)
             {
                 result.Status = "Unknown";
                 result.ErrorMessage = $"Unexpected error: {ex.Message}";
-                _logger.LogError(ex, "Unexpected error during ping: {IpAddress}", ipAddress);
+                _logger.LogError(ex, "Unexpected ping error: {Ip}", ipAddress);
             }
-
             return result;
         }
 
         /// <summary>
-        /// Execute ping in parallel for multiple IP addresses.
+        /// Bulk ping with throttling and optional single retry.
+        /// Contract:
+        /// - Concurrency caps fan-out (default 64).
+        /// - Global time limit cancels the whole sweep.
+        /// - Retry (opt-in): only after non-success; 1.5× timeout; success-on-retry => "Unstable".
+        /// - Logs a single summary line with distribution.
         /// </summary>
-        /// <param name="ipAddresses">List of target IP addresses</param>
-        /// <param name="timeoutMs">Timeout in milliseconds</param>
-        /// <param name="maxConcurrency">Maximum degree of parallelism</param>
-        /// <returns>List of PingResultDto</returns>
         public async Task<List<PingResultDto>> PingMultipleAsync(
             IEnumerable<string> ipAddresses,
-            int timeoutMs = 2000,
-            int maxConcurrency = 10)
+            int timeoutMs = 600,           // default LAN baseline
+            int maxConcurrency = 64,       // safe starting point; tune per deployment
+            int globalTimeLimitMs = 20000, // bounds worst-case UX
+            bool enableRetry = false,      // off by default to minimize load
+            CancellationToken ct = default)
         {
-            var ipList = ipAddresses.ToList();
-            _logger.LogInformation("Bulk ping started: targets={Count}, concurrency={Concurrency}",
-                ipList.Count, maxConcurrency);
+            var ips = ipAddresses.Where(ip => !string.IsNullOrWhiteSpace(ip)).Distinct().ToList();
+            _logger.LogInformation("Bulk ping started: targets={Targets}, concurrency={Concurrency}, timeout={Timeout}ms, globalLimit={Global}ms",
+                ips.Count, maxConcurrency, timeoutMs, globalTimeLimitMs);
 
-            var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
-            var tasks = ipList.Select(async ip =>
+            if (ips.Count == 0) return new List<PingResultDto>();
+
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            linked.CancelAfter(globalTimeLimitMs);
+
+            var gate = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+            var bag = new ConcurrentBag<PingResultDto>();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            var tasks = ips.Select(async ip =>
             {
-                await semaphore.WaitAsync();
+                await gate.WaitAsync(linked.Token);
                 try
                 {
-                    return await PingAsync(ip, timeoutMs);
+                    var first = await PingAsync(ip, timeoutMs, linked.Token);
+
+                    if (enableRetry && first.Status is "Offline" or "Unreachable" or "Unknown")
+                    {
+                        try
+                        {
+                            var second = await PingAsync(ip, (int)(timeoutMs * 1.5), linked.Token);
+                            if (second.Status == "Online") second.Status = "Unstable"; // flaky success
+                            bag.Add(second);
+                            return;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            first.Status = "Unknown";
+                            first.ErrorMessage = "Global timeout/cancel";
+                        }
+                    }
+                    bag.Add(first);
                 }
                 finally
                 {
-                    semaphore.Release();
+                    gate.Release();
                 }
             });
 
-            var results = await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks);
+            sw.Stop();
 
-            _logger.LogInformation("Bulk ping completed: total={Total}, online={Online}",
-                results.Length, results.Count(r => r.Status == "Online"));
+            var results = bag.ToList();
 
-            return results.ToList();
+            _logger.LogInformation(
+                "Bulk ping done: targets={T}, done={D}, totalMs={Ms}, dist(Online={On},Unstable={Un},Offline={Off},Unknown+Unreach={Uk})",
+                ips.Count, results.Count, sw.ElapsedMilliseconds,
+                results.Count(r => r.Status == "Online"),
+                results.Count(r => r.Status == "Unstable"),
+                results.Count(r => r.Status == "Offline"),
+                results.Count(r => r.Status == "Unknown" || r.Status == "Unreachable")
+            );
+
+            return results;
         }
 
         /// <summary>
-        /// Execute consecutive pings (repeat a specified number of times).
+        /// Repeat ping for a single IP at a fixed interval.
+        /// Useful to verify intermittency without flooding.
         /// </summary>
-        /// <param name="ipAddress">Target IP address</param>
-        /// <param name="count">Number of pings</param>
-        /// <param name="intervalMs">Interval between pings in milliseconds</param>
-        /// <param name="timeoutMs">Timeout in milliseconds</param>
-        /// <returns>List of PingResultDto</returns>
         public async Task<List<PingResultDto>> PingContinuousAsync(
             string ipAddress,
             int count = 4,
             int intervalMs = 1000,
-            int timeoutMs = 2000)
+            int timeoutMs = 600,
+            CancellationToken ct = default)
         {
-            _logger.LogInformation("Continuous ping started: {IpAddress}, count={Count}, interval={Interval}ms",
-                ipAddress, count, intervalMs);
-
-            var results = new List<PingResultDto>();
-
+            var list = new List<PingResultDto>();
             for (int i = 0; i < count; i++)
             {
-                if (i > 0)
-                    await Task.Delay(intervalMs);
-
-                var result = await PingAsync(ipAddress, timeoutMs);
-                results.Add(result);
-
-                _logger.LogDebug("Continuous ping {Current}/{Total}: {Status} - {Latency}ms",
-                    i + 1, count, result.Status, result.LatencyMs);
+                if (i > 0) await Task.Delay(intervalMs, ct);
+                list.Add(await PingAsync(ipAddress, timeoutMs, ct));
             }
-
-            return results;
+            return list;
         }
     }
 }

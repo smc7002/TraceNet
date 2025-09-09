@@ -16,6 +16,11 @@ dist-ssr/
 build/
 .vite/
 
+# build artifacts
+server/wwwroot/**
+!server/wwwroot/.gitkeep
+**/preview/**
+
 # envs
 *.local
 .env

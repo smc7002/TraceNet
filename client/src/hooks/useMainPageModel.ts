@@ -222,7 +222,12 @@ export function useMainPageModel() {
       );
       if (!ok) return;
     }
+
     updateMultipleStates({ isPinging: true, pingError: null });
+
+    // start timer
+    const t0 = performance.now();
+
     try {
       const pingResults = await pingAllDevices();
       const updated = state.devices.map((device) => {
@@ -236,7 +241,8 @@ export function useMainPageModel() {
           : device;
       });
       updateState('devices', updated);
-      // (compat) also update layoutedNodes to keep selection state
+
+      // (compat) keep selection state
       updateState(
         'layoutedNodes',
         finalNodes.map((n) => ({
@@ -245,9 +251,18 @@ export function useMainPageModel() {
         })),
       );
     } catch (err) {
-      updateState('pingError', err instanceof Error ? err.message : 'An error occurred during full ping.');
+      updateState(
+        'pingError',
+        err instanceof Error ? err.message : 'An error occurred during full ping.',
+      );
     } finally {
       updateState('isPinging', false);
+
+      // show popup on next tick (avoids being swallowed by state commits)
+      const secs = ((performance.now() - t0) / 1000).toFixed(2);
+      setTimeout(() => {
+        alert(`ping completed! requested time: ${secs} sec.`);
+      }, 0);
     }
   }, [
     state.isPinging,
@@ -265,7 +280,8 @@ export function useMainPageModel() {
         alert('There are no devices to update.');
         return;
       }
-      const human = `${status}` + (enablePing !== undefined ? `, Ping ${enablePing ? 'ON' : 'OFF'}` : '');
+      const human =
+        `${status}` + (enablePing !== undefined ? `, Ping ${enablePing ? 'ON' : 'OFF'}` : '');
       if (!confirm(`Change all ${ids.length} devices to "${human}"?`)) return;
 
       updateMultipleStates({ isPinging: true, pingError: null });
@@ -281,7 +297,8 @@ export function useMainPageModel() {
         }));
         updateState('devices', newDevices);
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'An error occurred during bulk status update.';
+        const message =
+          err instanceof Error ? err.message : 'An error occurred during bulk status update.';
         alert(message);
         updateState('pingError', message);
       } finally {
