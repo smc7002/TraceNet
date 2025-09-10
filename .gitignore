@@ -110,3 +110,4 @@ postman/*.postman_environment.json           # added
 **/obj/
 **/*.pdb
 *.bat
+docs/
