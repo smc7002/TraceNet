@@ -26,6 +26,7 @@ server/wwwroot/**
 .env
 .env.*   # e.g., .env.development, .env.production
 
+
 # IDE
 .vscode/*
 !.vscode/extensions.json
@@ -108,3 +109,4 @@ postman/*.postman_environment.json           # added
 **/bin/
 **/obj/
 **/*.pdb
+*.bat
