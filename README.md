@@ -191,7 +191,6 @@ TraceNet/
 ### Limitations
 
 - No authentication (planned v2.0)  
-- Optimized for PC → Switch → Server topologies  
-- Internal network only  
+- Optimized for PC → Switch → Server topologies    
 
 ---
