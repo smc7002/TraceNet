@@ -428,7 +428,7 @@ function DeviceHeader({ device }: { device: Device }) {
     <div className="border-b border-slate-200 bg-slate-50 p-4">
       <div className="text-lg font-semibold">{device.name}</div>
       <div className="text-sm text-slate-500">
-        {device.ipAddress ?? 'IP unspecified'} • {device.status} • just now
+        {device.ipAddress ?? 'IP unspecified'} {' | '} {device.status} {' | '} just now
       </div>
     </div>
   );

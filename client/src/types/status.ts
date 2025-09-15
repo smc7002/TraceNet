@@ -1,7 +1,4 @@
-/**
- * @fileoverview Network device status definitions
- * @description Enum of device states used in the TraceNet system
- */
+// status.ts: enums for device connectivity states.
 
 /** Connectivity state of a network device */
 export enum DeviceStatus {
@@ -20,3 +17,26 @@ export enum DeviceStatus {
   /** Unreachable (routing/path issue) */
   Unreachable = 'Unreachable',
 }
+
+/** Stable order for selects/legends/etc. */
+export const STATUS_OPTIONS: readonly DeviceStatus[] = [
+  DeviceStatus.Online,
+  DeviceStatus.Unstable,
+  DeviceStatus.Offline,
+  DeviceStatus.Unknown,
+  DeviceStatus.Unreachable,
+] as const;
+
+/**
+ * Normalize any incoming string to a DeviceStatus.
+ * Case-insensitive; null/undefined/unrecognized → Unknown.
+ */
+export const normalizeStatus = (s: string | null | undefined): DeviceStatus => {
+  switch ((s ?? '').toLowerCase()) {
+    case 'online': return DeviceStatus.Online;
+    case 'unstable': return DeviceStatus.Unstable;
+    case 'offline': return DeviceStatus.Offline;
+    case 'unreachable': return DeviceStatus.Unreachable;
+    default: return DeviceStatus.Unknown;
+  }
+};
