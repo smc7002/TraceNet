@@ -2,13 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using TraceNet.Data;
 using TraceNet.Models;
 using TraceNet.DTOs;
-using TraceNet.Services;
 
 namespace TraceNet.Services
 {
     /// <summary>
-    /// Service class that traces network connection paths between devices.
-    /// Uses data preloading and a synchronous DFS for performance.
+    /// Traces a network path (Device→Port→Cable→Port→Device) from a start device to a server.
+    /// Also supports pinging all devices along the traced path.
     /// </summary>
     public class TraceService
     {
@@ -24,30 +23,26 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// Trace a path from the starting device (DeviceId) to the server.
-        /// Throws on failure. Returns a <see cref="TraceResultDto"/>.
+        /// Trace path from a device to a server. Throws if no path is found.
         /// </summary>
+        /// <param name="startDeviceId">Starting device id.</param>
+        /// <param name="maxDepth">Max hops to prevent infinite loops (default: 20).</param>
         public async Task<TraceResultDto> TracePathAsync(int startDeviceId, int maxDepth = 20)
         {
             _logger.LogInformation("Trace started: StartDeviceId={StartDeviceId}", startDeviceId);
 
             try
             {
+                // Preload network subgraph to avoid N+1 during DFS.
                 var deviceCache = await PreloadNetworkDataAsync(startDeviceId, maxDepth);
-
                 _logger.LogInformation("Preload completed. Cached devices: {Count}", deviceCache.Count);
 
                 if (!deviceCache.TryGetValue(startDeviceId, out var startDevice))
-                {
-                    _logger.LogError("❌ Starting device not found in cache: {StartDeviceId}", startDeviceId);
                     throw new KeyNotFoundException($"Starting device (DeviceId={startDeviceId}) not found.");
-                }
 
-                _logger.LogInformation("Device loaded: {DeviceName}", startDevice.Name);
-
+                // Trivial case: start is already a server.
                 if (startDevice.Type.Equals("server", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogInformation("Starting device is already the server. Returning immediately.");
                     return new TraceResultDto
                     {
                         StartDeviceName = startDevice.Name,
@@ -58,18 +53,12 @@ namespace TraceNet.Services
                     };
                 }
 
-                _logger.LogInformation("About to enter DFS search...");
+                // In-memory DFS over the cache.
                 var result = PerformDFSSearch(startDeviceId, deviceCache, maxDepth);
-
-                _logger.LogInformation("DFS search completed. Success={Success}", result.Success);
-
                 if (!result.Success)
-                {
-                    _logger.LogWarning("❌ DFS search failed. No path found.");
                     throw new InvalidOperationException("Could not find a path to the server.");
-                }
 
-                result.StartDeviceName = startDevice.Name;
+                result.StartDeviceName = startDevice.Name; // convenience for UI
                 return result;
             }
             catch (Exception ex)
@@ -80,8 +69,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// Preload network data for connected devices.
-        /// Loads all connected devices up to <paramref name="maxDepth"/> using BFS.
+        /// Preload reachable devices (bounded by maxDepth) and required nav props.
         /// </summary>
         private async Task<Dictionary<int, Device>> PreloadNetworkDataAsync(int startDeviceId, int maxDepth)
         {
@@ -96,10 +84,10 @@ namespace TraceNet.Services
                 .Include(d => d.Ports)
                     .ThenInclude(p => p.Connection)
                         .ThenInclude(c => c.Cable)
-                .AsSplitQuery()
+                .AsSplitQuery() // multiple Include trees → avoid large cross-joins
                 .ToDictionaryAsync(d => d.DeviceId);
 
-            // Ensure ToPort.Device is populated from the cache when available
+            // Keep object identity consistent for DFS traversal.
             foreach (var device in devices.Values)
             {
                 foreach (var port in device.Ports)
@@ -116,13 +104,14 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// Collect connected device IDs using BFS (memory-based instead of EF LINQ).
+        /// Memory BFS to collect reachable device ids up to maxDepth (predictable DB usage).
         /// </summary>
         private async Task<HashSet<int>> GetConnectedDeviceIdsBFS_MemoryBased(int startDeviceId, int maxDepth)
         {
             var visited = new HashSet<int>();
             var queue = new Queue<(int DeviceId, int Depth)>();
 
+            // Load all devices once instead of lazy-loading during traversal
             var allDevices = await _context.Devices
                 .Include(d => d.Ports)
                     .ThenInclude(p => p.Connection)
@@ -137,14 +126,15 @@ namespace TraceNet.Services
             while (queue.Count > 0)
             {
                 var (currentDeviceId, depth) = queue.Dequeue();
-                if (depth >= maxDepth) continue;
+                if (depth >= maxDepth) continue; // Depth limit prevents infinite exploration
 
                 if (!allDevices.TryGetValue(currentDeviceId, out var device)) continue;
 
+                // Explore all outgoing connections from this device
                 foreach (var port in device.Ports)
                 {
                     var to = port.Connection?.ToPort?.Device;
-                    if (to != null && visited.Add(to.DeviceId))
+                    if (to != null && visited.Add(to.DeviceId)) // visited.Add returns false if already exists
                         queue.Enqueue((to.DeviceId, depth + 1));
                 }
             }
@@ -153,7 +143,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// Use a synchronous DFS to find a path to the server.
+        /// DFS over the preloaded cache; returns first found path.
         /// </summary>
         private TraceResultDto PerformDFSSearch(int startDeviceId, Dictionary<int, Device> deviceCache, int maxDepth)
         {
@@ -164,8 +154,10 @@ namespace TraceNet.Services
             if (DFS(startDeviceId, deviceCache, visited, pathStack, cableStack, 0, maxDepth))
             {
                 var path = pathStack.Reverse().ToList();
-                var cables = cableStack.Reverse().ToList();
-                var uniqueCables = cables
+
+                // Deduplicate cables for visualization.
+                var uniqueCables = cableStack
+                    .Reverse()
                     .GroupBy(c => c.CableId)
                     .Select(g => g.First())
                     .ToList();
@@ -183,8 +175,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// DFS algorithm to search for a path to the server.
-        /// Uses stacks to efficiently handle backtracking.
+        /// Core DFS: stop at server, avoid loops, backtrack on dead ends.
         /// </summary>
         private bool DFS(
             int currentDeviceId,
@@ -204,15 +195,10 @@ namespace TraceNet.Services
                 return false;
             }
 
-            _logger.LogInformation("DFS visiting: {DeviceId} ({DeviceName}), depth={Depth}", device.DeviceId, device.Name, depth);
-
             visited.Add(currentDeviceId);
 
             if (device.Type.Equals("server", StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogInformation("Server found: {DeviceName}", device.Name);
                 return true;
-            }
 
             foreach (var port in device.Ports)
             {
@@ -222,7 +208,8 @@ namespace TraceNet.Services
                 {
                     if (visited.Contains(nextDevice.DeviceId)) continue;
 
-                    var trace = new TraceDto
+                    // take edge
+                    pathStack.Push(new TraceDto
                     {
                         CableId = cable.CableId,
                         FromDeviceId = device.DeviceId,
@@ -231,34 +218,34 @@ namespace TraceNet.Services
                         ToDeviceId = nextDevice.DeviceId,
                         ToDevice = nextDevice.Name,
                         ToPort = nextPort.Name
-                    };
+                    });
 
-                    var cableEdge = new CableEdgeDto
+                    cableStack.Push(new CableEdgeDto
                     {
                         CableId = cable.CableId,
                         FromPortId = port.PortId,
                         FromDeviceId = device.DeviceId,
                         ToPortId = nextPort.PortId,
                         ToDeviceId = nextDevice.DeviceId
-                    };
+                    });
 
-                    pathStack.Push(trace);
-                    cableStack.Push(cableEdge);
-
+                    // recurse
                     if (DFS(nextDevice.DeviceId, deviceCache, visited, pathStack, cableStack, depth + 1, maxDepth))
                         return true;
 
+                    // backtrack
                     pathStack.Pop();
                     cableStack.Pop();
                 }
             }
 
+            // Allow alternate routes to revisit this node later.
             visited.Remove(currentDeviceId);
             return false;
         }
 
         /// <summary>
-        /// Get valid outgoing connections from a port.
+        /// Outgoing connection from a port (one-way in current model).
         /// </summary>
         private static List<(Device nextDevice, Cable cable, Port nextPort)> GetValidConnections(Port port)
         {
@@ -274,7 +261,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// Execute Ping for all devices along the traced path.
+        /// Trace, then ping all devices on that path. Returns aggregate stats and per-device results.
         /// </summary>
         public async Task<TracePingResultDto> PingTracePathAsync(int startDeviceId)
         {
@@ -282,9 +269,7 @@ namespace TraceNet.Services
 
             try
             {
-                // 1) Trace the path first
                 var traceResult = await TracePathAsync(startDeviceId);
-
                 if (!traceResult.Success)
                 {
                     return new TracePingResultDto
@@ -294,7 +279,7 @@ namespace TraceNet.Services
                     };
                 }
 
-                // 2) Collect all device IDs along the path
+                // Unique device set 
                 var deviceIds = new HashSet<int> { startDeviceId };
                 foreach (var step in traceResult.Path)
                 {
@@ -302,7 +287,6 @@ namespace TraceNet.Services
                     deviceIds.Add(step.ToDeviceId);
                 }
 
-                // 3) Ping each device
                 var pingResults = new List<PingResultDto>();
                 var devices = await _context.Devices
                     .Where(d => deviceIds.Contains(d.DeviceId))
@@ -314,19 +298,15 @@ namespace TraceNet.Services
                     pingResults.Add(pingResult);
                 }
 
-                var onlineCount = pingResults.Count(p => p.Status == "Online");
-                var offlineCount = pingResults.Count(p => p.Status == "Offline");
-                var unstableCount = pingResults.Count(p => p.Status == "Unstable");
-
                 return new TracePingResultDto
                 {
                     Success = true,
                     TracePath = traceResult,
                     PingResults = pingResults,
                     TotalDevices = deviceIds.Count,
-                    OnlineDevices = onlineCount,
-                    OfflineDevices = offlineCount,
-                    UnstableDevices = unstableCount,
+                    OnlineDevices = pingResults.Count(p => p.Status == "Online"),
+                    OfflineDevices = pingResults.Count(p => p.Status == "Offline"),
+                    UnstableDevices = pingResults.Count(p => p.Status == "Unstable"),
                     CheckedAt = DateTime.UtcNow
                 };
             }
@@ -338,7 +318,7 @@ namespace TraceNet.Services
         }
 
         /// <summary>
-        /// Execute ping for a single device (internal use).
+        /// Ping one device and persist its status snapshot.
         /// </summary>
         private async Task<PingResultDto> PingDeviceInternalAsync(Device device)
         {
@@ -355,10 +335,8 @@ namespace TraceNet.Services
                 };
             }
 
-            // Call PingService
             var pingResult = await _pingService.PingAsync(device.IPAddress);
 
-            // Update device state
             device.Status = pingResult.Status;
             device.LatencyMs = pingResult.LatencyMs;
             device.LastCheckedAt = DateTime.UtcNow;
