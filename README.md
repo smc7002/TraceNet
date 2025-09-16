@@ -139,7 +139,6 @@ TraceNet/
 ]
 ```
 
-📸 *[Insert API screenshot / Postman example here — e.g., docs/api-test.png]*
 
 ---
 
