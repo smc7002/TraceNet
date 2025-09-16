@@ -97,7 +97,8 @@ TraceNet/
 - Concurrent Ping monitoring with configurable timeout  
 - Radial layout clustering for visualization  
 
-📸 *[Insert diagram screenshot here — e.g., docs/diagram.png]*
+<img width="1842" height="592" alt="pre diagram" src="https://github.com/user-attachments/assets/c065a51e-0521-4f38-a388-9d6ee0bccc8a" />
+
 
 ---
 
@@ -156,7 +157,9 @@ TraceNet/
 - **React memoization** (`useMemo`, `useCallback`)  
 - **Adjustable Ping concurrency** (default: 10)  
 
-📸 *[Insert performance screenshot here — e.g., docs/performance.png]*
+<img width="1908" height="924" alt="Screenshot 2025-09-05 101616" src="https://github.com/user-attachments/assets/2f22d2d6-2cc6-4ae7-adf3-8a5e8c81242a" />
+
+
 
 ---
 
