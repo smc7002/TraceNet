@@ -9,13 +9,13 @@ import type { TraceResponse } from '../types/trace';
 import { mapTraceCablesToEdges } from '../utils/edgeMapper';
 
 export type SearchTraceState = {
-  // Message shown near the search box (kept in KR as authored).
+  // Message shown near the search box
   searchError?: string;
-  // Raw trace payload for detail panes.
+  // Raw trace payload for detail panes
   traceResult: TraceResponse | null;
-  // Edges that highlight traced cables.
+  // Edges that highlight traced cables
   traceEdges: Edge[];
-  // Nodes to spotlight (null = no filter). 
+  // Nodes to spotlight (null = no filter)
   traceFilterNodes: Set<string> | null;
 };
 
@@ -54,7 +54,7 @@ export function useSearchTrace(
           traceFilterNodes: null,
           traceEdges: [],
           traceResult: null,
-          searchError: `'${trimmed}' 장비를 찾을 수 없습니다.`,
+          searchError: `Device '${trimmed}' not found.`,
         });
         return;
       }
@@ -104,12 +104,11 @@ export function useSearchTrace(
           searchError: undefined,
         });
       } catch {
-        // Keep original KR copy
         setState({
           traceFilterNodes: null,
           traceEdges: [],
           traceResult: null,
-          searchError: 'Trace 정보를 불러오지 못했습니다.',
+          searchError: 'Failed to load trace information.',
         });
       }
     },
@@ -123,7 +122,7 @@ export function useSearchTrace(
       traceTimestampRef.current = callId;
 
       if (device.type?.toLowerCase() === 'server') {
-        setState({ searchError: '서버는 트레이스 대상이 아닙니다.' });
+        setState({ searchError: 'Tracing from servers is not allowed.' });
         return;
       }
 
@@ -137,7 +136,7 @@ export function useSearchTrace(
         setState({
           traceResult: null,
           traceEdges: [],
-          searchError: err instanceof Error ? err.message : '트레이스 로드 실패',
+          searchError: err instanceof Error ? err.message : 'Trace load failed.',
         });
       }
     },

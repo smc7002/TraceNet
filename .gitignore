@@ -1,7 +1,7 @@
-# .gitignore
-
-# logs
-logs
+# ---------------------------
+# Logs
+# ---------------------------
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -9,105 +9,104 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# dependencies / build outputs
+# ---------------------------
+# Frontend dependencies & builds
+# ---------------------------
 node_modules/
+client/node_modules/
 dist/
+client/dist/
 dist-ssr/
 build/
 .vite/
 
-# build artifacts
+# ---------------------------
+# Backend/.NET build artifacts
+# ---------------------------
+server/bin/
+server/obj/
+# publish outputs should not be versioned
+server/publish/
+
+# generated from client/dist at publish
 server/wwwroot/**
 !server/wwwroot/.gitkeep
-**/preview/**
 
-# envs
+
+# Generic .NET artifacts (any nested project)
+**/bin/
+**/obj/
+**/*.pdb
+
+# ---------------------------
+# Environment files
+# ---------------------------
 *.local
 .env
-.env.*   # e.g., .env.development, .env.production
+.env.*                   # e.g., .env.development, .env.production
 
-
-# IDE
+# ---------------------------
+# IDE / OS junk
+# ---------------------------
 .vscode/*
 !.vscode/extensions.json
 .idea/
+.vs/
+*.user
+*.rsuser
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+Thumbs.db
+desktop.ini
+_ReSharper.Caches/
 
-# tests -------------- (CHANGED)
+# ---------------------------
+# Tests & tooling caches
+# ---------------------------
 coverage/
-.nyc_output/              # added
-# DO NOT ignore test sources; keep them in repo:
-# (remove these lines that were ignoring tests)
-# *.test.ts
-# *.spec.ts
+.nyc_output/
+.eslintcache
+.cache/
 
-# docs --------------- (CHANGED)
-# Keep portfolio assets; ignore only raw/working sources
-# (remove previous: 'docs/' + whitelists)
-docs/raw/**               # e.g., original .psd/.ai/.mp4 sources
+# ---------------------------
+# Documentation rules
+# ---------------------------
+# Keep docs/ and *.md tracked; ignore only raw/working design sources.
+docs/raw/**              # original .psd/.ai/.mp4 sources etc.
 docs/tmp/**
 docs/**/*.psd
 docs/**/*.ai
 docs/**/*.sketch
-# keep images/GIF/markdown under docs/
-# e.g., docs/img/**, docs/gif/**, docs/*.md will be tracked
+# All other docs (images, GIFs, markdown) remain tracked.
 
-# etc
-.cache/
-.eslintcache              # added
+# ---------------------------
+# Preview / temp asset areas
+# ---------------------------
+**/preview/**
+
+# ---------------------------
+# Sample / local data
+# ---------------------------
+import_sample_*.json
+sample_uploads/
+
+# ---------------------------
+# Postman
+# ---------------------------
+# Ignore personal/adhoc collections; keep official ones.
+*.postman_collection.json
+postman/*.postman_environment.json
+!postman/official_*.postman_collection.json
+!postman/official_*.postman_environment.json
+
+# ---------------------------
+# Packages
+# ---------------------------
 *.tgz
 
-# backend build outputs (keep repo clean)
-server/bin/
-server/obj/
-bin/
-obj/
-
-# Visual Studio
-.vs/
-*.user                    # added
-*.rsuser                  # added
-
-# Rider / Resharper
-_ReSharper.Caches/
-
-# EF Core Migrations Snapshots (optional)
-*.dbmdl
-
-# Local DB files (optional but recommended)
+# ---------------------------
+# Local DB files (optional)
+# ---------------------------
 *.db
 *.sqlite
 *.mdf
 *.ldf
-
-# Windows junk
-Thumbs.db
-desktop.ini              # added
-
-# --- Custom Project Rules ---
-
-# Sample data files
-import_sample_*.json
-sample_uploads/
-
-# Personal devlogs
-TraceNet*.md
-*.md
-
-# Postman collections/envs (only ignore personal ones)
-*.postman_collection.json
-postman/*.postman_environment.json           # added
-!postman/official_*.postman_collection.json
-!postman/official_*.postman_environment.json # added
-
-# etc.
-**/bin/
-**/obj/
-**/*.pdb
-*.bat
-docs/
