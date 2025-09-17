@@ -188,11 +188,6 @@ TraceNet/
 
 - **Backend**: ASP.NET Core 6.0, EF Core, AutoMapper  
 - **Frontend**: React 18, TypeScript, React Flow, Tailwind, Vite  
-- **Database**: SQL Server / SQLite  
-
-### Limitations
-
-- No authentication (planned v2.0)  
-- Optimized for PC → Switch → Server topologies    
+- **Database**: SQL Server / SQLite     
 
 ---
