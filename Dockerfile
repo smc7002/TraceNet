@@ -12,7 +12,7 @@ RUN dotnet restore
 WORKDIR /app
 COPY server/ ./server/
 WORKDIR /app/server
-RUN dotnet publish -c Release -o out
+RUN dotnet publish -c Release -o out /p:BuildClientOnPublish=false
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:9.0
