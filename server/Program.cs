@@ -71,18 +71,18 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 // Run migrations on startup (with error handling)
-// using (var scope = app.Services.CreateScope())
-// {
-//     var db = scope.ServiceProvider.GetRequiredService<TraceNetDbContext>();
-//     try
-//     {
-//         db.Database.Migrate();
-//     }
-//     catch (Exception ex)
-//     {
-//         app.Logger.LogWarning("DB Migration failed: {message}", ex.Message);
-//     }
-// }
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<TraceNetDbContext>();
+    try
+    {
+        db.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning("DB Migration failed: {message}", ex.Message);
+    }
+}
 
 // Listen on Railway PORT or default 5000
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
@@ -132,19 +132,6 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<ExceptionMiddleware>();
 
 app.UseAuthorization();
-
-// Test endpoints
-app.MapGet("/", () => Results.Ok(new 
-{ 
-    status = "TraceNet API is running!",
-    timestamp = DateTime.UtcNow,
-    environment = builder.Environment.EnvironmentName
-}));
-
-app.MapGet("/ping", () => "pong");
-
-// API routes
-app.MapControllers();
 
 // API routes
 app.MapControllers();
