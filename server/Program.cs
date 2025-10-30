@@ -1,29 +1,28 @@
-// Program.cs
-
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using TraceNet.Data;
 using TraceNet.Services;
 using AutoMapper;
-using TraceNet.DTOs; // AutoMapper 프로필
+using TraceNet.DTOs;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ───────────────────────────────────────────────────────────────
-// DB
+// Database - PostgreSQL
 builder.Services.AddDbContext<TraceNetDbContext>(options =>
 {
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
-        sqlOptions =>
+    // Try appsettings first, fallback to Railway DATABASE_URL
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? Environment.GetEnvironmentVariable("DATABASE_URL");
+
+    options.UseNpgsql(connectionString, npgsqlOptions =>
         {
-            sqlOptions.CommandTimeout(180); // 3분
-            sqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 3,
-                maxRetryDelay: TimeSpan.FromSeconds(10),
-                errorNumbersToAdd: new[] { 2, 1205 } // 타임아웃/데드락
-            );
-            sqlOptions.MigrationsHistoryTable("__EFMigrationsHistory");
+            npgsqlOptions.CommandTimeout(180);
+            npgsqlOptions.EnableRetryOnFailure(
+    maxRetryCount: 3,
+    maxRetryDelay: TimeSpan.FromSeconds(10),
+    errorCodesToAdd: null
+);
+            npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory");
         })
         .EnableSensitiveDataLogging(builder.Environment.IsDevelopment())
         .EnableDetailedErrors(builder.Environment.IsDevelopment())
@@ -33,7 +32,7 @@ builder.Services.AddDbContext<TraceNetDbContext>(options =>
 // AutoMapper
 builder.Services.AddAutoMapper(typeof(DeviceProfile));
 
-// Controllers (순환참조 방지 + camelCase)
+// Controllers with JSON options
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {
@@ -43,44 +42,53 @@ builder.Services.AddControllers()
             System.Text.Json.JsonNamingPolicy.CamelCase;
     });
 
-// Services
+// Service registration
 builder.Services.AddScoped<CableService>();
 builder.Services.AddScoped<DeviceService>();
 builder.Services.AddScoped<PortService>();
 builder.Services.AddScoped<TraceService>();
 builder.Services.AddScoped<PingService>();
 
-// CORS (개발 중 5173 허용)
+// CORS - Allow local dev + Railway production
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
         policy
-            .WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
+            .WithOrigins(
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "https://tracenet-production.up.railway.app"
+            )
             .AllowAnyHeader()
             .AllowAnyMethod()
     );
 });
 
-// Swagger
+// Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ───────────────────────────────────────────────────────────────
-
 var app = builder.Build();
 
-// 앱 시작 시 마이그레이션 자동 적용
+// Run migrations on startup (with error handling)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<TraceNetDbContext>();
-    db.Database.Migrate();
+    try
+    {
+        db.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning("DB Migration failed: {message}", ex.Message);
+    }
 }
 
-// API 포트 고정
-app.Urls.Add("http://localhost:5000");
+// Listen on Railway PORT or default 5000
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+app.Urls.Add($"http://0.0.0.0:{port}");
 
-
-// 잘못된 절대경로를 /api/... 로 강제 리라이트 (헤더/Accept와 무관하게 항상 적용)
+// Path rewrite middleware: /device -> /api/device
 app.Use(async (ctx, next) =>
 {
     var path = ctx.Request.Path.Value ?? string.Empty;
@@ -95,60 +103,48 @@ app.Use(async (ctx, next) =>
     else if (path.Equals("/cable", StringComparison.OrdinalIgnoreCase))
         newPath = "/api/cable";
     else if (path.StartsWith("/trace/", StringComparison.OrdinalIgnoreCase))
-        newPath = "/api" + path; // /trace/... → /api/trace/...
+        newPath = "/api" + path;
 
     if (newPath is not null)
     {
-        var old = ctx.Request.Path.Value;
         ctx.Request.Path = newPath;
-        app.Logger.LogWarning("Rewrote {old} -> {new}{qs}", old, newPath, ctx.Request.QueryString);
+        app.Logger.LogWarning("Rewrote {old} -> {new}", path, newPath);
     }
 
     await next();
 });
 
-// //  /device 등으로 직접 GET되면 /api/... 로 로컬 리다이렉트
-// app.MapGet("/device",      (HttpContext ctx) => Results.LocalRedirect("/api/device" + ctx.Request.QueryString));
-// app.MapGet("/ports",       (HttpContext ctx) => Results.LocalRedirect("/api/ports"  + ctx.Request.QueryString));
-// app.MapGet("/port",        (HttpContext ctx) => Results.LocalRedirect("/api/port"   + ctx.Request.QueryString));
-// app.MapGet("/cable",       (HttpContext ctx) => Results.LocalRedirect("/api/cable"  + ctx.Request.QueryString));
-// app.MapGet("/trace/{*rest}", (string rest, HttpContext ctx)
-//     => Results.LocalRedirect("/api/trace/" + rest + ctx.Request.QueryString));
-
-// (정적 파일 서빙) wwwroot/index.html 등을 기본 문서로
+// Static files
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// CORS는 정적/컨트롤러 앞
+// CORS
 app.UseCors("AllowFrontend");
 
-// Swagger는 개발에서만
+// Swagger (dev only)
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// HTTPS 리디렉션은 인증서 준비되면 해제
-// app.UseHttpsRedirection();
-
-// 글로벌 예외 미들웨어
+// Exception handling
 app.UseMiddleware<ExceptionMiddleware>();
 
 app.UseAuthorization();
 
-// API 라우트
+// API routes
 app.MapControllers();
 
-// DB 헬스체크: 연결/마이그레이션/레코드 수 확인
+// Health check endpoint
 app.MapGet("/health/db", async (TraceNetDbContext db) =>
 {
     try
     {
         var connected = await db.Database.CanConnectAsync();
-        var pending   = await db.Database.GetPendingMigrationsAsync();
+        var pending = await db.Database.GetPendingMigrationsAsync();
         var deviceCnt = await db.Devices.CountAsync();
-        var cableCnt  = await db.Cables.CountAsync();
+        var cableCnt = await db.Cables.CountAsync();
 
         return Results.Ok(new
         {
@@ -163,7 +159,7 @@ app.MapGet("/health/db", async (TraceNetDbContext db) =>
     }
 });
 
-// SPA 폴백: /api가 아닌 경로는 모두 index.html 반환
+// SPA fallback
 app.MapFallbackToFile("index.html");
 
 app.Run();
