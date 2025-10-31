@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
 
     <!-- Toggle: set to false to skip building the client during publish -->
-    <BuildClientOnPublish>true</BuildClientOnPublish>
+    <BuildClientOnPublish>false</BuildClientOnPublish>
 
     <!-- Paths; adjust only if your repo layout differs -->
     <ClientProjectPath>../client</ClientProjectPath>
@@ -24,7 +24,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.6" />
+    <!-- <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.6" /> -->
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.1" />
   </ItemGroup>
 
