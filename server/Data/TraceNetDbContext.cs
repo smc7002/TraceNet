@@ -60,6 +60,12 @@ namespace TraceNet.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            modelBuilder.Entity<Device>().ToTable("devices");
+            modelBuilder.Entity<Port>().ToTable("ports");
+            modelBuilder.Entity<Cable>().ToTable("cables");
+            modelBuilder.Entity<CableConnection>().ToTable("cableconnections");
+            modelBuilder.Entity<Rack>().ToTable("racks");
+
             // Define one-to-many relationship between Device and Port
             modelBuilder.Entity<Device>()
                 .HasMany(d => d.Ports)
