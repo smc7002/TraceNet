@@ -4,56 +4,18 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-
-    <!-- Toggle: set to false to skip building the client during publish -->
-    <BuildClientOnPublish>false</BuildClientOnPublish>
-
-    <!-- Paths; adjust only if your repo layout differs -->
-    <ClientProjectPath>../client</ClientProjectPath>
-    <ClientDistPath>$(ClientProjectPath)/dist</ClientDistPath>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="12.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.5" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.0" />
-<!-- SQL Server :
-<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.6" />
--->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.6" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.6">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <!-- <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.6" /> -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.1" />
   </ItemGroup>
-
-  <!-- Fail early if the client app is missing while BuildClientOnPublish=true -->
-  <Target Name="EnsureClientExists" BeforeTargets="BuildClient" Condition="'$(BuildClientOnPublish)'=='true'">
-    <Error
-      Text="Client project not found at $(ClientProjectPath). Set BuildClientOnPublish=false to skip, or fix ClientProjectPath."
-      Condition="!Exists('$(ClientProjectPath)/package.json')" />
-  </Target>
-
-  <!-- Build client and copy dist to wwwroot before publish -->
-  <Target Name="BuildClient" BeforeTargets="Publish" Condition="'$(BuildClientOnPublish)'=='true'">
-    <!-- Use two Execs instead of '&&' to avoid XML escaping issues -->
-    <Message Text="Building client: npm ci, then npm run build" Importance="high" />
-    <Exec WorkingDirectory="$(ClientProjectPath)" Command="npm ci" />
-    <Exec WorkingDirectory="$(ClientProjectPath)" Command="npm run build" />
-
-    <!-- Re-evaluate dist files after build -->
-    <ItemGroup>
-      <!-- Include all files (including those without extensions) -->
-      <ClientDistFiles Include="$(ClientDistPath)\**\*" />
-    </ItemGroup>
-
-    <Message Text="Copying client dist to wwwroot" Importance="high" />
-    <RemoveDir Directories="wwwroot" />
-    <MakeDir Directories="wwwroot" />
-    <Copy SourceFiles="@(ClientDistFiles)"
-          DestinationFolder="wwwroot\%(RecursiveDir)"
-          SkipUnchangedFiles="true" />
-  </Target>
 
 </Project>
