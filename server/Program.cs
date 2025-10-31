@@ -86,8 +86,10 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<TraceNetDbContext>();
     try
     {
-        db.Database.EnsureCreated();
-        app.Logger.LogInformation("Database tables created successfully");
+        // Apply migrations
+        await db.Database.EnsureDeletedAsync();
+        await db.Database.EnsureCreatedAsync();
+        app.Logger.LogInformation("Database recreated with tables successfully");
     }
     catch (Exception ex)
     {
