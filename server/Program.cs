@@ -86,11 +86,12 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<TraceNetDbContext>();
     try
     {
-        db.Database.Migrate();
+        db.Database.EnsureCreated();
+        app.Logger.LogInformation("Database tables created successfully");
     }
     catch (Exception ex)
     {
-        app.Logger.LogWarning("DB Migration failed: {message}", ex.Message);
+        app.Logger.LogError("DB creation failed: {message}", ex.Message);
     }
 }
 
