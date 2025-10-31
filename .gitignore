@@ -110,3 +110,4 @@ postman/*.postman_environment.json
 *.sqlite
 *.mdf
 *.ldf
+server/Migrations/
