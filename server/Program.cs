@@ -10,9 +10,19 @@ var builder = WebApplication.CreateBuilder(args);
 // Database - PostgreSQL
 builder.Services.AddDbContext<TraceNetDbContext>(options =>
 {
-    // Try appsettings first, fallback to Railway DATABASE_URL
-    var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
-    ?? builder.Configuration.GetConnectionString("DefaultConnection");
+    var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+    string connectionString;
+
+    if (!string.IsNullOrEmpty(databaseUrl))
+    {
+        // Railway DATABASE_URL -> Npgsql
+        var uri = new Uri(databaseUrl);
+        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={uri.UserInfo.Split(':')[0]};Password={uri.UserInfo.Split(':')[1]};SSL Mode=Require;Trust Server Certificate=true";
+    }
+    else
+    {
+        connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+    }
 
     options.UseNpgsql(connectionString, npgsqlOptions =>
         {
