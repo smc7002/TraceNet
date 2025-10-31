@@ -11,8 +11,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<TraceNetDbContext>(options =>
 {
     // Try appsettings first, fallback to Railway DATABASE_URL
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-        ?? Environment.GetEnvironmentVariable("DATABASE_URL");
+    var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
     options.UseNpgsql(connectionString, npgsqlOptions =>
         {
